@@ -1,0 +1,34 @@
+--index-url https://download.pytorch.org/whl/cu121
+
+torch
+torchvision
+torchaudio
+fastapi
+uvicorn[standard]
+langchain
+langchain-community
+langchain-huggingface
+langchain-chroma
+langchain-groq
+langchain-ollama
+chromadb 
+pypdf
+python-docx
+docx2txt
+pandas
+openpyxl
+python-pptx
+tqdm
+python-dotenv
+tiktoken
+sentence-transformers
+pydantic
+unstructured
+extract-msg
+pywin32; sys_platform == 'win32'
+langchain-text-splitters
+python-multipart
+pika
+mammoth
+markdownify
+tabulate
