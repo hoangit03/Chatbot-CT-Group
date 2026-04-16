@@ -5,9 +5,9 @@
 
 ## 🛠️ Công nghệ
 - Backend: FastAPI  
-- LLM: OpenRouter / Ollama  
+- LLM: Ollama  
 - Framework: LangChain  
-- Vector DB: Chroma / FAISS  
+- Vector DB: Chroma 
 - Embedding: Sentence Transformers  
 
 ---
