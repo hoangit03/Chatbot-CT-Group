@@ -1,4 +1,4 @@
---index-url https://download.pytorch.org/whl/cu121
+--extra-index-url https://download.pytorch.org/whl/cu121
 
 torch
 torchvision
@@ -24,7 +24,7 @@ tiktoken
 sentence-transformers
 pydantic
 unstructured
-extract-msg
+extract-msg>=0.50.0
 pywin32; sys_platform == 'win32'
 langchain-text-splitters
 python-multipart
