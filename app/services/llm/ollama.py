@@ -1,0 +1,80 @@
+import logging
+import os
+from typing import List, Optional
+from dotenv import load_dotenv
+
+from app.core.exception.llm_exception import LLMException
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import BaseMessage
+from app.services.llm.base import BaseLLMClient
+
+load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+class OllamaLLMClient(BaseLLMClient):
+    """Ollama client với auto-pull model + logging + exception rõ ràng"""
+
+    def __init__(self):
+        self.model_name = os.getenv("MODEL_LLM", "qwen3:8b")
+        self.temperature = float(os.getenv("TEMPERATURE", 0.0))
+        self._llm: Optional[BaseChatModel] = None
+        logger.info(f"[LLM] Khởi tạo Ollama client với model: {self.model_name}")
+
+    def _ensure_model_exists(self):
+        """Tự động pull model nếu chưa có"""
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["ollama", "list"],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',      # ← Fix Unicode
+                timeout=15
+            )
+            if self.model_name not in result.stdout:
+                logger.info(f"[LLM] Model {self.model_name} chưa tồn tại. Đang pull...")
+                print(f"Đang pull model {self.model_name} từ Ollama (có thể mất vài phút)...")
+                
+                pull_result = subprocess.run(
+                    ["ollama", "pull", self.model_name],
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',      # ← Fix UnicodeDecodeError
+                    timeout=1800
+                )
+                if pull_result.returncode != 0:
+                    raise LLMException(
+                        message=f"Không thể pull model {self.model_name}",
+                        model=self.model_name,
+                        original_error=Exception(pull_result.stderr)
+                    )
+                logger.info(f"[LLM] Pull model {self.model_name} thành công")
+        except FileNotFoundError:
+            raise LLMException("Không tìm thấy lệnh 'ollama'. Vui lòng cài Ollama trước.")
+        except Exception as e:
+            raise LLMException("Lỗi khi kiểm tra/pull model Ollama", self.model_name, e)
+
+    def get_llm(self) -> BaseChatModel:
+        if self._llm is None:
+            self._ensure_model_exists()
+            from langchain_ollama import ChatOllama
+            self._llm = ChatOllama(
+                model=self.model_name,
+                temperature=self.temperature,
+                num_ctx=16384,      # context lớn để hỗ trợ history dài
+                num_predict=-1,
+            )
+        return self._llm
+
+    def invoke(self, messages: List[BaseMessage]) -> str:
+        try:
+            llm = self.get_llm()
+            logger.debug(f"[LLM] Gửi prompt với {len(messages)} messages")
+            response = llm.invoke(messages)
+            logger.info(f"[LLM] Nhận được response ({len(response.content)} ký tự)")
+            return response.content
+        except Exception as e:
+            raise LLMException("Lỗi khi gọi Ollama", self.model_name, e)
