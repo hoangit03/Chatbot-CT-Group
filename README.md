@@ -24,3 +24,10 @@ python -m venv .venv
 pip install -r requirements-dev.txt
 
 
+```
+##  Run
+
+```bash
+uvicorn app.main:app --reload
+
+```
