@@ -24,7 +24,7 @@ class RAGService:
             "answer": answer,
             "sources": [
                 {
-                    "file_name": doc.metadata.get("file_name"),
+                    "file_name": doc.metadata.get("source_file") or doc.metadata.get("source") or doc.metadata.get("file_name") or "unknown",
                     "score": doc.metadata.get("rerank_score") or doc.metadata.get("similarity_score", 0)
                 }
                 for doc in retrieval_result.documents

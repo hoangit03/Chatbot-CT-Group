@@ -8,14 +8,21 @@ load_dotenv()
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 CHROMA_DB_DIR = os.getenv("VECTOR_DB_DIR", os.path.join(REPO_ROOT, "vectorstore", "chroma_db"))
 
-# Khởi tạo VectorDB Client
-chroma_client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
+# Lazy init
+_chroma_client = None
+
+def get_chroma_client():
+    global _chroma_client
+    if _chroma_client is None:
+        _chroma_client = chromadb.HttpClient(host="localhost", port=8002)
+    return _chroma_client
 
 def get_all_vectors(collection_name: str = "hr_policies"):
     """
     Lấy toàn bộ dữ liệu (trừ chuỗi Vector float quá nặng) từ ChromaDB
     """
     try:
+        chroma_client = get_chroma_client()
         collection = chroma_client.get_collection(name=collection_name)
     except Exception as e:
         return {"status": "error", "message": f"Chưa có Collection {collection_name} hoặc DB trống. Chi tiết lỗi: {str(e)}"}
@@ -66,6 +73,7 @@ def delete_all_vectors(collection_name: str = "hr_policies"):
     try:
         # Thay vì delete_collection gây lỗi giật sập Index của SQLite, 
         # ta sẽ lấy toàn bộ ID và xóa sạch tệp nhỏ bên trong.
+        chroma_client = get_chroma_client()
         collection = chroma_client.get_or_create_collection(name=collection_name)
         all_data = collection.get(include=[])
         ids = all_data.get("ids", [])

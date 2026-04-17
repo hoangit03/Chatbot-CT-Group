@@ -28,8 +28,8 @@ else:
 embedder = SentenceTransformer(EMBED_MODEL_NAME, device=EMBED_DEVICE)
 print("[Embedding Engine] Nạp mô hình hoàn tất!")
 
-# Khởi tạo VectorDB Client
-chroma_client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
+# Khởi tạo VectorDB Client thông qua Docker
+chroma_client = chromadb.HttpClient(host="localhost", port=8002)
 
 def get_collection():
     return chroma_client.get_or_create_collection(

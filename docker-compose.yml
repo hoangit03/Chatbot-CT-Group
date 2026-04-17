@@ -35,6 +35,19 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: chroma_server
+    ports:
+      - "8002:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+    volumes:
+      - ./vectorstore/chroma_db:/chroma/chroma
+    restart: unless-stopped
+
 volumes:
   paddleocr_cache:
   rabbitmq_data:

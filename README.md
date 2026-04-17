@@ -39,7 +39,7 @@ docker-compose up -d
 # HƯỚNG DẪN 1: KHI CẦN NẠP DỮ LIỆU MỚI VÀO DATABASE (ETL)
 # ==============================================================
 # Chạy API thu thập tài liệu (chạy trên port 8001):
-uvicorn app.api_etl:app --host 0.0.0.0 --port 8001 --reload
+uvicorn app.api_etl:app --host 0.0.0.0 --port 8001 --reloadqb3wbk   bkbv2kvkvwvk/ư2rB
 # (Sau đó chạy tuần tự từng worker bên dưới CÙNG LÚC, mỗi dòng lệnh 1 cửa sổ terminal mới)
 python -m pipeline.workers.ocr_worker
 python -m pipeline.workers.to_md_worker
@@ -63,7 +63,7 @@ uvicorn app.api_bot:app --host 0.0.0.0 --port 8000 --reload
 | Data | POST | `/api/v1/extract` | `:8001` | Upload văn bản thô |
 | Data | GET | `/api/v1/vectordb/all` | `:8001` | Kiểm tra VectorDB|
 | Data | DELETE | `/api/v1/vectordb/all` | `:8001` | Clear VectorDB |
-
+ 
 ---
 
 ## Lưu Đồ Luồng Dữ Liệu Sau Tích Hợp
