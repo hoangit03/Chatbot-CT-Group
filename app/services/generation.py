@@ -99,11 +99,29 @@ class GenerationService:
             prompt_vars = {"question": question, "chat_history": chat_history}
             logger.info("[Generation] Intent: SIMPLE (không tìm thấy tài liệu)")
         else:
+            # === DYNAMIC CONTEXT ASSEMBLER ===
+            # Giới hạn dung lượng text được nhồi vào LLM để tối ưu Tốc Độ & Chống Quá Tải
+            # Ví dụ: 2500 ký tự (Khoảng 500-600 tokens) là mức lý tưởng cho Model Qwen 1.7B
+            max_char_limit = 2500
+            current_chars = 0
+            selected_docs = []
+            
+            for doc in retrieval_result.documents:
+                doc_len = len(doc.page_content)
+                # Đảm bảo Bot luôn có ÍT NHẤT 1 chunk dù chunk đó có to đến mấy
+                if current_chars + doc_len > max_char_limit and len(selected_docs) > 0:
+                    logger.info(f"[Generation] Đã chạm ngưỡng {current_chars}/{max_char_limit} chars. Tự động ngắt nạp thêm Chunk.")
+                    break
+                    
+                selected_docs.append(doc)
+                current_chars += doc_len
+
             context = "\n\n".join([
-                f"Tài liệu: {doc.metadata.get('file_name', 'Unknown')}\n"
+                f"Tài liệu: {doc.metadata.get('source', doc.metadata.get('file_name', 'Unknown'))}\n"
                 f"Nội dung: {doc.page_content}"
-                for doc in retrieval_result.documents
+                for doc in selected_docs
             ])
+            
             prompt_type = PromptType.RAG
             prompt_vars = {
                 "question": question,
@@ -111,7 +129,7 @@ class GenerationService:
                 "chat_history": chat_history,
             }
             logger.info(
-                f"[Generation] Intent: RAG | Tài liệu: {len(retrieval_result.documents)}"
+                f"[Generation] Intent: RAG | Đã dùng {len(selected_docs)}/{len(retrieval_result.documents)} Chunks (Tổng: {current_chars} ký tự)"
             )
 
         # Kết hợp history + prompt hiện tại
