@@ -8,7 +8,7 @@ from langchain_core.documents import Document
 
 load_dotenv()
 
-class Embedder:
+class Embedder(Embeddings):
     """"""
     
     _instance: Optional["Embedder"] = None
@@ -39,3 +39,7 @@ class Embedder:
     def get_embedding_model(self) -> Embeddings:
         """Trả về model để truyền vào VectorStore"""
         return self._embedding_model
+    
+    def embed_query(self, text: str) -> List[float]:
+        """Required by LangChain Embeddings interface"""
+        return self._embedding_model.embed_query(text)

@@ -1,0 +1,2 @@
+﻿user_input,retrieved_contexts,response,reference,faithfulness,answer_relevancy,context_precision,context_recall,answer_correctness
+Công ty thành lập năm nào?,['CT-Group thành lập năm 2010 tại TP.HCM.'],Công ty thành lập năm 2010.,Công ty thành lập năm 2010,1.0,0.8944938186150392,0.9999999999,1.0,0.9882399679830542

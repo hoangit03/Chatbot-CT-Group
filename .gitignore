@@ -13,5 +13,7 @@ env/
 logs/
 *.log
 
+vectorstore/
+
 .vscode/
 .idea/
