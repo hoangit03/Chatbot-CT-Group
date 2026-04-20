@@ -36,8 +36,8 @@ async def chat(request: ChatRequest):
             success=True,
             query=request.query,
             answer=result["answer"],
-            sources=[Source(**s) for s in result["sources"]],
-            retrieved_count=result["retrieved_count"],
+            # sources=[Source(**s) for s in result["sources"]],
+            # retrieved_count=result["retrieved_count"],
         )
 
         return response

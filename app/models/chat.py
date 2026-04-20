@@ -23,7 +23,7 @@ class ChatResponse(BaseModel):
     success: bool = True
     query: str
     answer: str
-    sources: List[Source]
-    retrieved_count: int
+    # sources: List[Source]
+    # retrieved_count: int
     timestamp: str = datetime.now().isoformat()
     error: Optional[str] = None
