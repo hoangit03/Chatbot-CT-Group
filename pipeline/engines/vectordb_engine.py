@@ -14,7 +14,9 @@ _chroma_client = None
 def get_chroma_client():
     global _chroma_client
     if _chroma_client is None:
-        _chroma_client = chromadb.HttpClient(host="localhost", port=8002)
+        chroma_host = os.getenv("CHROMA_HOST", "localhost")
+        chroma_port = int(os.getenv("CHROMA_PORT", 8002))
+        _chroma_client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
     return _chroma_client
 
 def get_all_vectors(collection_name: str = "hr_policies"):

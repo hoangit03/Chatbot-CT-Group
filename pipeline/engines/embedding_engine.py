@@ -29,7 +29,9 @@ embedder = SentenceTransformer(EMBED_MODEL_NAME, device=EMBED_DEVICE)
 print("[Embedding Engine] Nạp mô hình hoàn tất!")
 
 # Khởi tạo VectorDB Client thông qua Docker
-chroma_client = chromadb.HttpClient(host="localhost", port=8002)
+chroma_host = os.getenv("CHROMA_HOST", "localhost")
+chroma_port = int(os.getenv("CHROMA_PORT", 8002))
+chroma_client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
 
 def get_collection():
     return chroma_client.get_or_create_collection(

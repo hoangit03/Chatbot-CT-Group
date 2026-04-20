@@ -30,7 +30,9 @@ class ChromaVectorStore(BaseVectorStore):
         """Load DB đã tồn tại hoặc tạo mới"""
         import chromadb
         if self._vectorstore is None or self._embedding != embedding:
-            http_client = chromadb.HttpClient(host="localhost", port=8002)
+            chroma_host = os.getenv("CHROMA_HOST", "localhost")
+            chroma_port = int(os.getenv("CHROMA_PORT", 8002))
+            http_client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
             self._vectorstore = Chroma(
                 client=http_client,
                 embedding_function=embedding,
