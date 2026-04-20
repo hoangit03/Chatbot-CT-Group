@@ -5,6 +5,7 @@ import os
 import uuid
 import fitz  # PyMuPDF
 from paddlex import create_pipeline
+import paddle
 
 app = FastAPI(title="PaddleOCR-VL-1.5 Native Server", version="1.0")
 
@@ -149,6 +150,12 @@ def predict_layout(req: OCRRequest):
                 # Xóa ngay lập tức ảnh trên đĩa để giải phóng
                 os.remove(img_path)
                 
+                # Giải phóng VRAM CUDA cho luồng tiếp theo
+                try:
+                    paddle.device.cuda.empty_cache()
+                except Exception:
+                    pass
+                
             doc.close()
         else:
             # Dành cho các định dạng không phải PDF (VD: png, jpg)
@@ -176,3 +183,9 @@ def predict_layout(req: OCRRequest):
                 os.remove(temp_path)
             except:
                 pass
+                
+        # Gom rác đồ họa lần chót
+        try:
+            paddle.device.cuda.empty_cache()
+        except Exception:
+            pass
