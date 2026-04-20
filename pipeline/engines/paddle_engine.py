@@ -48,7 +48,7 @@ def run_ocr_pipeline(pdf_name: str) -> bool:
     try:
         # PING TRẠM TỪ XA
         print(f"[Paddle Engine HTTP] Đang truyền tải gói dữ liệu {len(file_b64)/1024:.2f} KB tới Máy 4GB OCR...", flush=True)
-        res = requests.post(PADDLE_OCR_ENDPOINT, json=payload, timeout=600)
+        res = requests.post(PADDLE_OCR_ENDPOINT, json=payload, timeout=7200)
         res.raise_for_status()
         
         api_response = res.json()
