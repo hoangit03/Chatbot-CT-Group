@@ -11,8 +11,11 @@ env/
 .env
 
 logs/
+*.csv
 *.log
 *.csv
+
+vectorstore/
 
 .vscode/
 .idea/

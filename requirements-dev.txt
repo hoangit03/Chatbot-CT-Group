@@ -26,3 +26,8 @@ unstructured
 extract-msg
 pywin32
 langchain-ollama
+ragas
+datasets
+pandas
+langchain-permit
+rank_bm2c5
