@@ -15,7 +15,7 @@ class CrossEncoderReranker(BaseReranker):
 
     def __init__(self, model_name: str = None):
         self.device = os.getenv("DEVICE","cpu")
-        self.model_name = model_name or "cross-encoder/ms-marco-MiniLM-L-6-v2"
+        self.model_name = model_name or "Qwen/Qwen3-Reranker-0.6B"
         print(f"Khởi tạo CrossEncoder reranker: {self.model_name} xử lý GPU: {self.device}, cuda: {torch.cuda.is_available()}")
         self.model = CrossEncoder(self.model_name, device=self.device)  
 
