@@ -16,3 +16,12 @@ logs/
 
 .vscode/
 .idea/
+
+# Pipeline shared data (file uploads, outputs)
+shared_data/data_input/*
+shared_data/data_output/*
+!shared_data/data_input/.gitkeep
+!shared_data/data_output/.gitkeep
+
+# VectorDB data
+vectorstore/chroma_db/

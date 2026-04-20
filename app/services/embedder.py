@@ -9,7 +9,7 @@ from langchain_core.documents import Document
 load_dotenv()
 
 class Embedder:
-    """"""
+    """Singleton Embedder - Tự động chọn model dựa trên EMBED_DEVICE từ .env"""
     
     _instance: Optional["Embedder"] = None
     _embedding_model: Optional[Embeddings] = None
@@ -22,8 +22,13 @@ class Embedder:
 
     def _initialize(self):
         """Chỉ chạy 1 lần khi tạo instance đầu tiên"""
-        self.device = os.getenv("DEVICE", "cpu")
-        self.model_name = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-large")
+        self.device = os.getenv("EMBED_DEVICE", "cuda").lower()
+        
+        # Chọn model dựa trên device
+        if self.device == "cuda":
+            self.model_name = os.getenv("EMBEDDING_MODEL_GPU", "intfloat/multilingual-e5-large")
+        else:
+            self.model_name = os.getenv("EMBEDDING_MODEL_CPU", "paraphrase-multilingual-MiniLM-L12-v2")
         
         print(f"[Embedder] Khởi tạo model: {self.model_name} | Device: {self.device.upper()}")
         
@@ -34,7 +39,7 @@ class Embedder:
         )
 
     def embed_documents(self, documents: List[Document]) -> List[List[float]]:
-        return self.embedding_model.embed_documents([doc.page_content for doc in documents])
+        return self._embedding_model.embed_documents([doc.page_content for doc in documents])
 
     def get_embedding_model(self) -> Embeddings:
         """Trả về model để truyền vào VectorStore"""

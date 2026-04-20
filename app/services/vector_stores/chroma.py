@@ -16,8 +16,7 @@ class ChromaVectorStore(BaseVectorStore):
     """
     Implementation hoàn chỉnh cho ChromaDB
     """
-
-    def __init__(self, persist_dir: str = None, collection_name: str = "internal_knowledge"):
+    def __init__(self, persist_dir: str = None, collection_name: str = "hr_policies"):
         self.persist_dir = persist_dir or  os.getenv("VECTOR_DB_DIR", "./vectorstore/chroma_db")
         self.collection_name = collection_name
         
@@ -29,9 +28,13 @@ class ChromaVectorStore(BaseVectorStore):
     # ====================== HELPER METHODS ======================
     def _get_or_create_vectorstore(self, embedding: Embeddings) -> Chroma:
         """Load DB đã tồn tại hoặc tạo mới"""
+        import chromadb
         if self._vectorstore is None or self._embedding != embedding:
+            chroma_host = os.getenv("CHROMA_HOST", "localhost")
+            chroma_port = int(os.getenv("CHROMA_PORT", 8002))
+            http_client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
             self._vectorstore = Chroma(
-                persist_directory=self.persist_dir,
+                client=http_client,
                 embedding_function=embedding,
                 collection_name=self.collection_name
             )
@@ -46,14 +49,16 @@ class ChromaVectorStore(BaseVectorStore):
 
     def delete_collection(self) -> None:
         """Xóa toàn bộ collection (dùng khi replace=True)"""
-        if Path(self.persist_dir).exists():
-            import shutil
-            shutil.rmtree(self.persist_dir)
-            Path(self.persist_dir).mkdir(parents=True, exist_ok=True)
+        import chromadb
+        try:
+            http_client = chromadb.HttpClient(host="localhost", port=8002)
+            http_client.delete_collection(name=self.collection_name)
+        except Exception as e:
+            pass # Lỗi nếu collection chưa tồn tại
         
         self._vectorstore = None
         self._embedding = None
-        print(f"Đã xóa toàn bộ collection '{self.collection_name}'")
+        print(f"Đã xóa toàn bộ collection '{self.collection_name}' qua HTTP API")
 
     # ====================== MAIN METHODS ======================
     def add_documents(
@@ -85,11 +90,13 @@ class ChromaVectorStore(BaseVectorStore):
         ids = [self._generate_stable_id(doc) for doc in documents]
 
         if replace:
+            import chromadb
+            http_client = chromadb.HttpClient(host="localhost", port=8002)
             # Tạo mới hoàn toàn
             self._vectorstore = Chroma.from_documents(
                 documents=documents,
                 embedding=embedding,
-                persist_directory=self.persist_dir,
+                client=http_client,
                 collection_name=self.collection_name,
                 ids=ids
             )
@@ -97,7 +104,7 @@ class ChromaVectorStore(BaseVectorStore):
             # Thêm incremental
             vectorstore.add_documents(documents=documents, ids=ids)
 
-        vectorstore.persist()
+        # Khác với Local DB, HTTP Client tự động persist
         print(f"Đã lưu thành công {len(documents)} documents vào collection '{self.collection_name}'")
 
     def get_retriever(self, search_kwargs: Optional[dict] = None):
