@@ -28,11 +28,10 @@ class RetrievalService:
         self.top_k = int(os.getenv("RETRIEVAL_TOP_K",6))
         self.embedder = embedder or Embedder()
         self.vector_store = VectorStoreFactory.get_vector_store()
-
+        self.reranker_top_k = int(os.getenv("RERANKER_TOP_K",20))
         # Khởi tạo reranker nếu được bật trong .env
         self.reranker: Optional[BaseReranker] = None
         if os.getenv("RERANKER_ENABLED", "false").lower() == "true":
-            self.reranker_top_k = int(os.getenv("RERANKER_TOP_K",20))
             self.reranker = reranker or CrossEncoderReranker(
                 model_name=os.getenv("RERANKER_MODEL")
             )
@@ -83,5 +82,5 @@ class RetrievalService:
             reranked=reranked
         )
 
-        print(f" → Trả về {len(final_docs)} documents {'(đã rerank)' if reranked else ''}")
+        print(f"Trả về {len(final_docs)} documents {'(đã rerank)' if reranked else ''}")
         return result
