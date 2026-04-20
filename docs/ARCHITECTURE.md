@@ -6,7 +6,7 @@
 
 ## 1. Sơ đồ Hoạt động Tổng thể
 
-Luồng chảy của hệ thống vận hành theo quy tắc **"Điều Phối Cơ Động"** giữa 2 Cỗ máy. Máy 8GB đóng vai trò Bộ Não Điều Hành, còn Máy 4GB đóng vai trò Lõi Xử Lý Cơ Sở Dữ Liệu và Thị Giác Khổng Lồ.
+Luồng chảy của hệ thống vận hành theo quy tắc **"Điều Phối Cơ Động"** giữa 2 Cỗ máy. Máy 8GB đóng vai trò Bộ Não Điều Hành toàn diện (Lưu trữ + Hàng Đợi), còn Máy 4GB đóng vai trò Lõi Xử Lý Thị Giác Khổng Lồ độc lập.
 
 Tóm tắt chu trình:
 1. **User (Upload)** -> `API Endpoint (Node 8GB)` -> Gửi tác vụ vào `RabbitMQ`.
@@ -15,31 +15,31 @@ Tóm tắt chu trình:
    - Giao thức mạng TCP/IP "Push" cục Base64 sang cho VLM Server tại cổng `8080` (Node 4GB).
    - VLM Server (`PaddleOCR-VL-1.5`) bung nén, phân tích hình học, xử lý trọn vẹn Bảng/Biểu theo góc nhìn Multimodal và gửi ngược file `.MD` (Markdown) siêu sạch về lại cho Node 8GB.
 3. Nếu File là `DOCX/XLSX`:
-   - Trích xuất thẳng trên CPU/GPU bản địa của Node 8GB (Vì file thô dễ nuốt, không cần OCR).
+   - Trích xuất thẳng trên CPU/GPU bản địa của Node 8GB bằng `to_md_worker` (Vì file thô dễ nuốt, không cần OCR).
 4. Chuỗi Hậu Kỳ (Hậu VLM) trên Node 8GB:
    - File `.MD` mới ra lò sẽ rới vào chuỗi Worker: `Cleaning Worker` -> `Chunking Worker` -> `Embedding Worker`.
-   - Các Worker này sử dụng CPU/GPU 8GB để nghiền nát Vector và Ping qua cổng `8002` Lưu trữ thẻ nhớ vào VectorDB vĩnh trú trên Node 4GB.
+   - Các Worker này sử dụng CPU/GPU 8GB để nghiền nát Vector và Lưu trữ vào VectorDB ngay trong nội bộ Node 8GB.
 
 ---
 
 ## 2. Nhiệm vụ Tách Biệt Toàn Diện
 
-### 🌌 MÁY 1 (NODE 8GB VRAM) - The Orchestrator
-**Vai trò:** Trái tim điều phối Logic, tiền xử lý và đẩy Vector cực tinh vi.
+### 🌌 MÁY 1 (NODE 8GB VRAM) - Trạm Trung Tâm (The Orchestrator)
+**Vai trò:** Trái tim điều phối Logic, tiền xử lý, gánh hệ sinh thái Database và Vector Embedder.
 **Nhiệm vụ Chạy:**
+- **RabbitMQ (Cổng 5672):** Bưu điện truyền phát Task tập trung.
+- **ChromaDB Vector Store (Cổng 8002):** Lưu trữ Data tĩnh.
 - `app/api_etl:app` (Giao diện Frontend nhận tệp của người dùng).
 - Các Worker Đuôi (Code Python gốc): `ocr_worker`, `worker_to_md`, `cleaning_worker`, `chunking_worker`, `embedding_worker`.
-  - `worker_to_md`: Đảm nhận việc trích xuất siêu tốc các tệp văn bản thô (DOCX, EXCEL, PPTX) thành Markdown bằng CPU bản địa.
+  - `worker_to_md`: Đảm nhận việc trích xuất siêu tốc các tệp văn bản thô (DOCX, EXCEL, PPTX).
   - `ocr_worker`: Nếu tệp là PDF, worker này sẽ đóng gói tệp thành Base64 và đẩy sang máy 4GB.
 - Embedding Model (E5-Large VRAM/CPU) phục vụ khâu nghiền Text -> Vector.
 
-### 🏭 MÁY 2 (NODE 4GB VRAM) - The Infrastructure
-**Vai trò:** Cái nôi Lõi Phần cứng ngầm, gánh trọn các Service Thặng Dư (Heavy Docker).
+### 🏭 MÁY 2 (NODE 4GB VRAM) - Trạm Vệ Tinh VLM (The OCR Satellite)
+**Vai trò:** Được cởi trói 100% RAM/VRAM để gánh trọn một Service siêu nặng.
 **Nhiệm vụ Chạy:**
-- **RabbitMQ (Cổng 5672):** Bưu điện truyền phát Task cho 2 máy.
-- **ChromaDB Vector Store (Cổng 8002):** Lưu trữ Data tĩnh.
 - **VLM API Server - PaddleX (Cổng 8080):** 
-   Được Custom bằng `FastAPI` trong `app/api_paddle.py`. Nó chứa model Vision-Language Mắt thần `PaddleOCR-VL-1.5`.
+   Được Custom bằng `FastAPI` trong `app/api_paddle.py`. Ngốn 3.9/4GB VRAM để chứa model Vision-Language Mắt thần `PaddleOCR-VL-1.5`.
 
 ---
 
@@ -47,57 +47,52 @@ Tóm tắt chu trình:
 
 Để đánh thức hệ thống, bạn cần thao tác trên hai máy theo tứ tự sau:
 
-### Bước 1: Khởi động Đáy Tầng (Trên MÁY 2 - 4GB)
-> (Bắt buộc phải lên máy này bật trước để RabbitMQ và OCR Server thức giấc)
-
-1. Giữ File mã nguồn trong máy 4GB như hiện tại.
-2. Tại thư mục `Chatbot-CT-Group`, khởi run các Container Lõi bằng Docker Compose:
+### Bước 1: Khởi động Trạm OCR Vệ Tinh (Trên MÁY 2 - 4GB)
+1. Giữ File mã nguồn trong máy 4GB.
+2. Tại thư mục `Chatbot-CT-Group`, mở file `docker-compose.yml`, chỉ cần giữ lại Core của `paddleocr` (có thể xóa khối rabbitmq/chroma đi để cực kỳ nhẹ máy).
+3. Khởi chạy Container:
    ```bash
-   docker compose up -d rabbitmq chromadb paddleocr
+   docker compose up -d paddleocr
    ```
-3. Theo dõi Log của thằng khổng lồ OCR: 
-   ```bash
-   docker logs -f paddleocr_server
-   ```
-   **Dấu hiệu thành công:** Chờ đến khi thấy chữ `Uvicorn running on http://0.0.0.0:8080` (Model Weights có thể tải rất lâu trong lần đầu).
+4. Theo dõi Log: `docker logs -f paddleocr_server` -> Chờ đến khi thấy chữ `Uvicorn running on http://0.0.0.0:8080`.
 
 ---
 
-### Bước 2: Thiết lập Giao Thức Mạng (Trên MÁY 1 - 8GB)
-1. Giữ Code cập nhật mới nhất ở nhánh `dev/distributed-architecture`.
-2. Mở file `.env` của thư mục Hệ thống trên Máy 8GB.
-3. Chỉnh cái thông số Xương Sống (`WORKER_NODE_IP`) trỏ vào địa chỉ IP LAN của Máy 4GB (VD: Máy 4GB mạng công ty IP là `192.168.1.150` thì thảy nó vào).
+### Bước 2: Khởi động Lõi Cơ Sở Dữ Liệu (Trên MÁY 1 - 8GB)
+1. Đảm bảo file `docker-compose.yml` trên máy này có 2 khối `rabbitmq` và `chromadb`.
+2. Khởi chạy Backend lõi:
+   ```bash
+   docker compose up -d rabbitmq chromadb
+   ```
+
+---
+
+### Bước 3: Thiết lập Giao Thức Mạng (Trên MÁY 1 - 8GB)
+1. Mở file `.env` của thư mục Hệ thống trên Máy 8GB.
+2. Thiết lập trỏ đường đi của RabbitMQ và Chroma vào Localhost, và chĩa họng súng OCR về phía trạm vệ tinh:
    ```env
    # .env
-   WORKER_NODE_IP=192.168.1.150
-   PADDLE_OCR_ENDPOINT=http://${WORKER_NODE_IP}:8080/layout-parsing
-   CHROMA_HOST=${WORKER_NODE_IP}
-   RABBITMQ_HOST=${WORKER_NODE_IP}
+   # Vì MQ và Chroma chạy ngay tại máy này
+   WORKER_NODE_IP=localhost
+   RABBITMQ_HOST=localhost
+   CHROMA_HOST=localhost
+   
+   # Địa chỉ IP LAN trỏ sang MÁY 4GB
+   PADDLE_OCR_ENDPOINT=http://10.6.10.78:8080/layout-parsing
    ```
-   *(Hệ thống của tôi đã tự động config để Python đọc và thông nối các Port `8080`, `8002`, `5672` theo sát cái Base IP này).*
 
 ---
 
-### Bước 3: Đánh Thức Trái Tim Điều Phối (Trên MÁY 1 - 8GB)
-Chỉ khi Bước 1 chạy xong, Bưu điện MQ mở cửa, Máy 1 mới được kích hoạt:
+### Bước 4: Đánh Thức Trái Tim Điều Phối (Trên MÁY 1 - 8GB)
+Chỉ khi MQ mở cửa, Máy 1 mới được kích hoạt các Worker Pika:
 
-Bật các terminal tại thư mục Code và chạy Backend ETL + Rabbit Workers:
-```bash
-# Terminal 1: Bật API Đón File từ Client
-uvicorn app.api_etl:app --port 8001 
+Cách dễ nhất (chỉ dùng trên Windows): Click đúp trực tiếp vào file **`start_pipeline.bat`**. Nó sẽ tự động bung ra 6 cửa sổ CLI chạy cho bạn:
+- Web API (Cổng 8000)
+- `ocr_worker`
+- `to_md_worker`
+- `cleaning_worker`
+- `chunking_worker`
+- `embedding_worker`
 
-# Terminal 2, 3, 4: Bật thợ phu
-python -m pipeline.workers.ocr_worker
-python -m pipeline.workers.cleaning_worker
-python -m pipeline.workers.chunking_worker
-python -m pipeline.workers.embedding_worker
-```
-
-### ✅ Bằng chứng Thép
-Hệ thống sẽ chạy một luồng tròn trịa:
-- Máy `8GB` ném cục PDF vào File. Đọc Base64, PING thẳng qua IP `192.168...:8080`.
-- Máy `4GB` khè ra Lửa VRAM để đọc Ảnh bằng VLM AI, ghép Markdown siêu cấp gửi trả.
-- Máy `8GB` nhận lại `.md`, đập `#` và gom vào Vector Embedder.
-- Xong gọi PING sang `192.168...:8002` cất tủ bên `4GB`. 
-
-Sạch sẽ, Phân công rõ ràng, Tận dụng 12GB VRAM hợp lực không lãng phí 1MB nào!
+**✅ Bằng Chứng Thép:**
+Hệ thống sẽ chạy một luồng tròn trịa: Mọi công việc bóc tách tài liệu nặng được đẩy sang Node 4GB làm "Culi chẻ củi", Node 8GB ung dung nhận thành quả Markdown siêu sạch, lưu Vector vào Chromadb, nhịp nhàng không một vệt lợn cợn!
