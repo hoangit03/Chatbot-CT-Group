@@ -11,6 +11,7 @@ env/
 .env
 
 logs/
+*.csv
 *.log
 
 vectorstore/
