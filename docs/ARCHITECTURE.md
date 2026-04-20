@@ -28,7 +28,9 @@ Tóm tắt chu trình:
 **Vai trò:** Trái tim điều phối Logic, tiền xử lý và đẩy Vector cực tinh vi.
 **Nhiệm vụ Chạy:**
 - `app/api_etl:app` (Giao diện Frontend nhận tệp của người dùng).
-- Các Worker Đuôi (Code Python gốc): `parser_worker`, `cleaning_worker`, `chunking_worker`, `embedding_worker`.
+- Các Worker Đuôi (Code Python gốc): `ocr_worker`, `worker_to_md`, `cleaning_worker`, `chunking_worker`, `embedding_worker`.
+  - `worker_to_md`: Đảm nhận việc trích xuất siêu tốc các tệp văn bản thô (DOCX, EXCEL, PPTX) thành Markdown bằng CPU bản địa.
+  - `ocr_worker`: Nếu tệp là PDF, worker này sẽ đóng gói tệp thành Base64 và đẩy sang máy 4GB.
 - Embedding Model (E5-Large VRAM/CPU) phục vụ khâu nghiền Text -> Vector.
 
 ### 🏭 MÁY 2 (NODE 4GB VRAM) - The Infrastructure

@@ -8,6 +8,7 @@ import extract_msg
 import subprocess
 import shutil
 import re
+from pptx import Presentation
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -299,7 +300,38 @@ def msg_to_md(input_path, output_path):
         print(f"[Engine Error] MSG -> MD Fail: {e}")
 
 # ==========================================
-# MODULE 7: MAIN PIPELINE DISPATCHER
+# MODULE 7: PPTX -> MD (Native)
+# ==========================================
+def pptx_to_md(input_path, output_path):
+    try:
+        prs = Presentation(input_path)
+        md_lines = []
+        for i, slide in enumerate(prs.slides):
+            md_lines.append(f"## Slide {i+1}")
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text.strip():
+                    md_lines.append(shape.text.strip())
+                if shape.has_table:
+                    table = shape.table
+                    # Tạo bảng Markdown đơn giản
+                    for r_idx, row in enumerate(table.rows):
+                        row_data = [cell.text.replace('\n', ' ').strip() for cell in row.cells]
+                        md_lines.append("| " + " | ".join(row_data) + " |")
+                        # Thêm separator line cho dòng đầu tiên
+                        if r_idx == 0:
+                            md_lines.append("|" + "|".join(["---"] * len(row.cells)) + "|")
+                            
+        final_md_text = "\n\n".join(md_lines)
+        category_flag = classify_markdown(final_md_text)
+        
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(category_flag + final_md_text)
+        print(f"PPTX -> MD: {output_path}")
+    except Exception as e:
+        print(f"[Engine Error] PPTX -> MD Fail: {e}")
+
+# ==========================================
+# MODULE 8: MAIN PIPELINE DISPATCHER
 # ==========================================
 def run_to_md_pipeline(file_name: str) -> bool:
     input_path = os.path.join(INPUT_DIR, file_name)
@@ -321,17 +353,13 @@ def run_to_md_pipeline(file_name: str) -> bool:
         excel_to_md(input_path, output_path)
     elif ext == 'msg':
         msg_to_md(input_path, output_path)
-    elif ext in ['ppt', 'pptx']:
-        pdf_path = convert_ppt_xplatform(input_path, TMP_DIR)
-        if pdf_path:
-            pdf_name = os.path.basename(pdf_path)
-            final_ocr_path = os.path.join(INPUT_DIR, pdf_name)
-            shutil.copy2(pdf_path, final_ocr_path)
-            print(f"[ToMD Engine] PPT->PDF done. Pushing to OCR queue: {pdf_name}")
-            ocr_publisher.publish_task(pdf_name)
-            return True
-        else:
-            return False
+    elif ext == 'pptx':
+        pptx_to_md(input_path, output_path)
+    elif ext == 'ppt':
+        print(f"[ToMD Engine] Chuyển đổi PPT sang PPTX để đọc Native text...")
+        # Sử dụng tạm hàm PPT to PDF cũ hoặc gọi win32com chuyển sang PPTX (hiện tại hỗ trợ bằng cách warning)
+        print(f"[ToMD Engine] Native Extract chưa hỗ trợ .ppt cũ, yêu cầu file .pptx!")
+        return False
     else:
         print(f"[ToMD Engine] Unsupported format or skip: {ext}")
         return False
