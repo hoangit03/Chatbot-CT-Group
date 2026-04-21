@@ -4,6 +4,7 @@ import requests
 # =========================
 # CONFIG
 # =========================
+BASE_URL_CHAT = "http://localhost:7999/api/v1"
 BASE_URL = "http://localhost:8000/api/v1"
 
 # =========================
@@ -75,7 +76,7 @@ if prompt := st.chat_input("Nhập câu hỏi..."):
         with st.spinner("Đang trả lời..."):
             try:
                 res = requests.post(
-                    f"{BASE_URL}/chat",
+                    f"{BASE_URL_CHAT}/chat",
                     json={
                         "query": prompt,
                         "chat_history": st.session_state.messages
