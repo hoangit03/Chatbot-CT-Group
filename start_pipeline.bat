@@ -4,6 +4,10 @@ echo.
 
 set PYTHONPATH=%cd%
 
+echo (Thiết lập cấu hình Encoding chống lỗi hiển thị Tiếng Việt)
+set PYTHONIOENCODING=utf-8
+set PYTHONUTF8=1
+
 echo (Đảm bảo thư viện gom màn hình honcho đã cài đặt)
 call .\venv\Scripts\activate 2>nul || call .\.venv\Scripts\activate 2>nul
 pip install honcho -q
