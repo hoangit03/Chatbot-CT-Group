@@ -39,7 +39,7 @@ def _save_registry(registry):
 from typing import List
 
 @router.post("/")
-async def extract_documents(files: List[UploadFile] = File(...)):
+async def extract_documents(file: List[UploadFile] = File(...)):
     """
     Endpoint (Auto-Router) để nhận NHIỀU file.
     Tự động phân loại luồng OCR cho PDF hoặc ToMD cho Word/Excel/MSG.
@@ -51,8 +51,8 @@ async def extract_documents(files: List[UploadFile] = File(...)):
     registry = _get_registry()
     results = []
     
-    for file in files:
-        doc_name = file.filename
+    for uploaded_file in file:
+        doc_name = uploaded_file.filename
         ext = doc_name.split('.')[-1].lower()
         base_name = os.path.splitext(doc_name)[0]
         
@@ -65,7 +65,7 @@ async def extract_documents(files: List[UploadFile] = File(...)):
             continue
             
         # 0. Đọc toàn bộ dung lượng file vào RAM
-        file_bytes = await file.read()
+        file_bytes = await uploaded_file.read()
         
         # 1. Kiểm tra trùng lặp (Chỉ quét Tên File)
         if doc_name in registry:
