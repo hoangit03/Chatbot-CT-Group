@@ -26,7 +26,7 @@ async def chat(request: ChatRequest):
                     history.append(AIMessage(content=msg.content))
 
         # Gọi RAG Service
-        result = rag_service.answer(
+        result = await rag_service.answer(
             query=request.query,
             chat_history=history
         )
