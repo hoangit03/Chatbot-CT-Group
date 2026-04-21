@@ -1,36 +1,17 @@
 @echo off
-echo ===== BOOTING CT-GROUP RAG PIPELINE (8GB NODE) =====
+echo ===== BOOTING CT-GROUP RAG PIPELINE (ALL-IN-ONE TERMINAL) =====
 echo.
 
 set PYTHONPATH=%cd%
 
-echo 0. Starting FastAPI ChatBot Orchestrator...
-start cmd /k ".\.venv\Scripts\activate && uvicorn app.api_bot:app --host 0.0.0.0 --port 7999 --reload"
+echo (Đảm bảo thư viện gom màn hình honcho đã cài đặt)
+call .\venv\Scripts\activate 2>nul || call .\.venv\Scripts\activate 2>nul
+pip install honcho -q
 
+echo.
+echo ==============================================================
+echo [!] Dang khoi dong toan bo Pipeline trong 1 man hinh duy nhat...
+echo [!] Nhan To-hop phim [Ctrl + C] de Tat TOAN BO he thong nhe.
+echo ==============================================================
 
-echo 1. Starting FastAPI ETL Orchestrator...
-start cmd /k ".\.venv\Scripts\activate && uvicorn app.main_legacy:app --host 0.0.0.0 --port 8000 --reload"
-
-echo 2. Starting OCR Worker...
-start cmd /k ".\.venv\Scripts\activate && python pipeline\workers\ocr_worker.py"
-
-echo 3. Starting TO_MD Worker (Native CPU Parsing)...
-start cmd /k ".\.venv\Scripts\activate && python pipeline\workers\to_md_worker.py"
-
-echo 4. Starting CLEANING Worker...
-start cmd /k ".\.venv\Scripts\activate && python pipeline\workers\cleaning_worker.py"
-
-echo 5. Starting CHUNKING Worker...
-start cmd /k ".\.venv\Scripts\activate && python pipeline\workers\chunking_worker.py"
-
-echo 6. Starting EMBEDDING Worker...
-start cmd /k ".\.venv\Scripts\activate && python pipeline\workers\embedding_worker.py"
-
-echo 5. Starting CHUNKING Worker...
-start cmd /k ".\.venv\Scripts\activate && python pipeline\workers\chunking_worker.py"
-
-echo 6. Starting EMBEDDING Worker...
-start cmd /k ".\.venv\Scripts\activate && python pipeline\workers\embedding_worker.py"
-
-echo All background workers initiated! (Including OCR Worker)
-exit
+honcho start -c clean_wrk=2,chunk_wrk=2,embed_wrk=2
