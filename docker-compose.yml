@@ -1,12 +1,13 @@
 services:
   paddleocr:
-    image: paddlepaddle/paddle:3.3.0-gpu-cuda12.6-cudnn9.5
+    image: paddlepaddle/paddle:3.3.1-gpu-cuda12.6-cudnn9.5
     container_name: paddleocr_server
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
+              count: 1  
               capabilities: ["gpu"]
     ports:
       - "8080:8080"

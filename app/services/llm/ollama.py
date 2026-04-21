@@ -16,7 +16,7 @@ class OllamaLLMClient(BaseLLMClient):
     """Ollama client với auto-pull model + logging + exception rõ ràng"""
 
     def __init__(self):
-        self.model_name = os.getenv("MODEL_LLM", "qwen3:8b")
+        self.model_name = os.getenv("MODEL_LLM", "qwen3:4b")
         self.temperature = float(os.getenv("TEMPERATURE", 0.0))
         self._llm: Optional[BaseChatModel] = None
         logger.info(f"[LLM] Khởi tạo Ollama client với model: {self.model_name}")
