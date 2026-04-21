@@ -42,38 +42,40 @@ def log_upload(file_name, status, message=""):
 # API FUNCTIONS
 # =========================
 def upload_and_extract(files):
-    progress = st.sidebar.progress(0)
-    total = len(files)
+    try:
+        # build multipart đúng chuẩn cho FastAPI List[UploadFile]
+        multipart_files = [
+            ("files", (file.name, file, file.type))
+            for file in files
+        ]
 
-    for i, file in enumerate(files):
-        log_upload(file.name, "⏳ Uploading")
+        # log trước khi gửi
+        for file in files:
+            log_upload(file.name, "⏳ Uploading")
 
-        try:
-            res = requests.post(
-                f"{BASE_URL}/extract",
-                files={"file": (file.name, file, file.type)},  # ✅ FIX KEY
-                timeout=300
-            )
+        res = requests.post(
+            f"{BASE_URL}/extract",
+            files=multipart_files,
+            timeout=300
+        )
 
-            if res.status_code == 200:
-                data = res.json()
+        if res.status_code == 200:
+            data = res.json()
 
-                for result in data.get("results", []):
-                    status = result["status"]
-                    message = result.get("message", "")
+            for result in data.get("results", []):
+                file_name = result["file_name"]
+                status = result["status"]
+                message = result.get("message", "")
 
-                    if status == "queued":
-                        log_upload(file.name, "📥 Queued", message)
-                    else:
-                        log_upload(file.name, "❌ Failed", message)
+                if status == "queued":
+                    log_upload(file_name, "📥 Queued", message)
+                else:
+                    log_upload(file_name, "❌ Failed", message)
+        else:
+            st.sidebar.error(res.text)
 
-            else:
-                log_upload(file.name, "❌ API Error", res.text)
-
-        except Exception as e:
-            log_upload(file.name, "❌ Exception", str(e))
-
-        progress.progress((i + 1) / total)
+    except Exception as e:
+        st.sidebar.error(str(e))
 
 
 def delete_vectordb():
@@ -97,7 +99,7 @@ def call_chat_api(prompt):
                 "query": prompt,
                 "chat_history": st.session_state.messages
             },
-            timeout=120
+            timeout=12000
         )
 
         if res.status_code == 200:
