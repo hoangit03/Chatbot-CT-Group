@@ -39,11 +39,11 @@ def _save_registry(registry):
 from typing import List
 
 @router.post("/")
-async def extract_documents(file: List[UploadFile] = File(...)):
+async def extract_documents(files: List[UploadFile] = File(...)):
     """
-    Endpoint (Auto-Router) để nhận NHIỀU file.
+    Endpoint (Auto-Router) để nhận NHIỀU files.
     Tự động phân loại luồng OCR cho PDF hoặc ToMD cho Word/Excel/MSG.
-    Tích hợp lớp khiên chắn chống trùng lặp từng file bằng mã băm SHA-256.
+    Tích hợp lớp khiên chắn chống trùng lặp từng files bằng mã băm SHA-256.
     """
     allowed_ocr = ['pdf']
     allowed_md = ['doc', 'docx', 'xls', 'xlsx', 'msg', 'pptx', 'ppt']
@@ -51,7 +51,7 @@ async def extract_documents(file: List[UploadFile] = File(...)):
     registry = _get_registry()
     results = []
     
-    for uploaded_file in file:
+    for uploaded_file in files:
         doc_name = uploaded_file.filename
         ext = doc_name.split('.')[-1].lower()
         base_name = os.path.splitext(doc_name)[0]
@@ -60,11 +60,11 @@ async def extract_documents(file: List[UploadFile] = File(...)):
             results.append({
                 "file_name": doc_name, 
                 "status": "failed", 
-                "message": f"Unsupported file type: {ext}"
+                "message": f"Unsupported files type: {ext}"
             })
             continue
             
-        # 0. Đọc toàn bộ dung lượng file vào RAM
+        # 0. Đọc toàn bộ dung lượng files vào RAM
         file_bytes = await uploaded_file.read()
         
         # 1. Kiểm tra trùng lặp (Chỉ quét Tên File)
@@ -72,7 +72,7 @@ async def extract_documents(file: List[UploadFile] = File(...)):
             results.append({
                 "file_name": doc_name, 
                 "status": "failed", 
-                "message": f"Từ chối hệ thống: Tên file '{doc_name}' đã từng được tải lên trước đây."
+                "message": f"Từ chối hệ thống: Tên files '{doc_name}' đã từng được tải lên trước đây."
             })
             continue
         
@@ -86,7 +86,7 @@ async def extract_documents(file: List[UploadFile] = File(...)):
                 try: os.remove(f)
                 except: pass
 
-        # 3. Ghi file mới vào Shared Volume
+        # 3. Ghi files mới vào Shared Volume
         local_path = os.path.join(INPUT_DIR, doc_name)
         with open(local_path, "wb") as f:
             f.write(file_bytes)
@@ -100,7 +100,7 @@ async def extract_documents(file: List[UploadFile] = File(...)):
             queue_target = "to_md_task_queue"
 
         if not success:
-            registry.pop(file_hash, None)
+            registry.pop(doc_name, None)
             results.append({
                 "file_name": doc_name, 
                 "status": "failed", 
@@ -113,7 +113,7 @@ async def extract_documents(file: List[UploadFile] = File(...)):
                 "message": f"File sạch. Auto-route vào {queue_target}"
             })
 
-    # Lưu lại tổng thể registry sau khi nạp loạt file
+    # Lưu lại tổng thể registry sau khi nạp loạt files
     _save_registry(registry)
     
     return JSONResponse(content={
