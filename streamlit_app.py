@@ -16,19 +16,11 @@ st.set_page_config(page_title="Chatbot Document QA", layout="wide")
 # INIT SESSION STATE
 # =========================
 def init_session():
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    if "upload_logs" not in st.session_state:
-        st.session_state.upload_logs = []
-
-    if "is_uploading" not in st.session_state:
-        st.session_state.is_uploading = False
-        
-    if "confirm_delete" not in st.session_state:
-        st.session_state.confirm_delete = False
-    if "delete_notice" not in st.session_state:
-        st.session_state.delete_notice = None
+    st.session_state.setdefault("messages", [])
+    st.session_state.setdefault("upload_logs", [])
+    st.session_state.setdefault("is_uploading", False)
+    st.session_state.setdefault("confirm_delete", False)
+    st.session_state.setdefault("delete_notice", None)
 
 init_session()
 
@@ -38,48 +30,55 @@ init_session()
 st.title("🤖 Chatbot Document QA")
 
 # =========================
-# SIDEBAR - FILE UPLOAD
+# LOG HELPER
 # =========================
-st.sidebar.header("📂 Upload tài liệu")
-
-uploaded_files = st.sidebar.file_uploader(
-    "Chọn nhiều file (PDF, DOCX, Excel...)",
-    type=["pdf", "docx", "xlsx", "doc", "xls", "msg", "pptx", "ppt"],
-    accept_multiple_files=True
-)
-
 def log_upload(file_name, status, message=""):
     timestamp = datetime.now().strftime("%H:%M:%S")
     st.session_state.upload_logs.insert(
         0, f"[{timestamp}] {file_name} - {status} {message}"
     )
 
+# =========================
+# API FUNCTIONS
+# =========================
 def upload_and_extract(files):
-    for file in files:
-        log_upload(file.name, "⏳ Processing")
+    progress = st.sidebar.progress(0)
+    total = len(files)
+
+    for i, file in enumerate(files):
+        log_upload(file.name, "⏳ Uploading")
 
         try:
             res = requests.post(
                 f"{BASE_URL}/extract",
-                files={"file": (file.name, file, file.type)},
+                files={"file": (file.name, file, file.type)},  # ✅ FIX KEY
                 timeout=300
             )
 
             if res.status_code == 200:
-                log_upload(file.name, "✅ Success")
+                data = res.json()
+
+                for result in data.get("results", []):
+                    status = result["status"]
+                    message = result.get("message", "")
+
+                    if status == "queued":
+                        log_upload(file.name, "📥 Queued", message)
+                    else:
+                        log_upload(file.name, "❌ Failed", message)
+
             else:
-                log_upload(file.name, "❌ Failed", res.text)
+                log_upload(file.name, "❌ API Error", res.text)
 
         except Exception as e:
             log_upload(file.name, "❌ Exception", str(e))
 
+        progress.progress((i + 1) / total)
+
 
 def delete_vectordb():
     try:
-        res = requests.delete(
-            f"{BASE_URL}/vectordb/all",
-            timeout=60
-        )
+        res = requests.delete(f"{BASE_URL}/vectordb/all", timeout=60)
 
         if res.status_code == 200:
             return True, "Đã xóa toàn bộ VectorDB"
@@ -90,96 +89,6 @@ def delete_vectordb():
         return False, str(e)
 
 
-# Upload button
-if st.sidebar.button("🚀 Upload & Extract", disabled=st.session_state.is_uploading):
-    if not uploaded_files:
-        st.sidebar.warning("Chưa chọn file")
-
-    elif len(uploaded_files) > MAX_FILES:
-        st.sidebar.error(f"Chỉ được upload tối đa {MAX_FILES} file mỗi lần")
-
-    else:
-        st.session_state.is_uploading = True
-        upload_and_extract(uploaded_files)
-        st.session_state.is_uploading = False
-
-# =========================
-# SIDEBAR - UPLOAD LOGS
-# =========================
-st.sidebar.subheader("📊 Trạng thái xử lý")
-
-if st.session_state.upload_logs:
-    for log in st.session_state.upload_logs:
-        st.sidebar.write(log)
-else:
-    st.sidebar.caption("Chưa có file nào được xử lý")
-
-# =========================
-# DELETE VECTORDB (DANGER ZONE)
-# =========================
-st.sidebar.divider()
-st.sidebar.subheader("⚠️ Danger Zone")
-
-# STEP 1: click delete
-if not st.session_state.confirm_delete:
-    if st.sidebar.button("🗑️ Xóa toàn bộ dữ liệu"):
-        st.session_state.confirm_delete = True
-        st.rerun()   # 🔥 FIX delay
-
-# STEP 2: confirm UI
-else:
-    st.sidebar.warning("Bạn chắc chắn muốn xóa toàn bộ dữ liệu?")
-
-    col1, col2 = st.sidebar.columns(2)
-
-    if col1.button("✅ Xác nhận"):
-        with st.spinner("Đang xóa dữ liệu..."):
-            success, msg = delete_vectordb()
-
-        if success:
-            # lưu notice thay vì show trực tiếp
-            st.session_state.delete_notice = ("success", msg)
-
-            # reset data
-            st.session_state.messages = []
-            st.session_state.upload_logs = []
-        else:
-            st.session_state.delete_notice = ("error", msg)
-
-        st.session_state.confirm_delete = False
-        st.rerun()
-
-    if col2.button("❌ Hủy"):
-        st.session_state.confirm_delete = False
-        st.rerun()   # 🔥 đảm bảo UI reset ngay
-        
-# =========================
-# GLOBAL NOTIFICATION
-# =========================
-if st.session_state.delete_notice:
-    status, msg = st.session_state.delete_notice
-
-    if status == "success":
-        st.success(f"🗑️ {msg}")
-    else:
-        st.error(f"❌ {msg}")
-
-    # clear sau khi hiển thị 1 lần
-    st.session_state.delete_notice = None
-
-# =========================
-# MAIN - CHAT UI
-# =========================
-st.subheader("💬 Chat")
-
-# Hiển thị lịch sử chat
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-
-# =========================
-# CHAT FUNCTION
-# =========================
 def call_chat_api(prompt):
     try:
         res = requests.post(
@@ -193,32 +102,114 @@ def call_chat_api(prompt):
 
         if res.status_code == 200:
             return res.json().get("answer", "Không có câu trả lời")
-        else:
-            return f"Lỗi API: {res.text}"
+        return f"Lỗi API: {res.text}"
 
     except Exception as e:
         return f"Lỗi hệ thống: {e}"
-    
+
+# =========================
+# SIDEBAR - UPLOAD
+# =========================
+st.sidebar.header("📂 Upload tài liệu")
+
+uploaded_files = st.sidebar.file_uploader(
+    "Chọn nhiều file",
+    type=["pdf", "docx", "xlsx", "doc", "xls", "msg", "pptx", "ppt"],
+    accept_multiple_files=True
+)
+
+if st.sidebar.button("🚀 Upload & Extract", disabled=st.session_state.is_uploading):
+    if not uploaded_files:
+        st.sidebar.warning("Chưa chọn file")
+
+    elif len(uploaded_files) > MAX_FILES:
+        st.sidebar.error(f"Tối đa {MAX_FILES} file")
+
+    else:
+        st.session_state.is_uploading = True
+        upload_and_extract(uploaded_files)
+        st.session_state.is_uploading = False
+
+        st.sidebar.info("📌 File đã vào queue. Vui lòng đợi xử lý trước khi hỏi.")
+
+# =========================
+# SIDEBAR - LOG
+# =========================
+st.sidebar.subheader("📊 Trạng thái")
+
+if st.session_state.upload_logs:
+    for log in st.session_state.upload_logs:
+        st.sidebar.write(log)
+else:
+    st.sidebar.caption("Chưa có dữ liệu")
+
+# =========================
+# DELETE (DANGER ZONE)
+# =========================
+st.sidebar.divider()
+st.sidebar.subheader("⚠️ Danger Zone")
+
+if not st.session_state.confirm_delete:
+    if st.sidebar.button("🗑️ Xóa toàn bộ dữ liệu"):
+        st.session_state.confirm_delete = True
+        st.rerun()
+else:
+    st.sidebar.error("Hành động này không thể hoàn tác")
+
+    col1, col2 = st.sidebar.columns(2)
+
+    if col1.button("✅ Xác nhận"):
+        with st.spinner("Đang xóa..."):
+            success, msg = delete_vectordb()
+
+        if success:
+            st.session_state.delete_notice = ("success", msg)
+            st.session_state.messages = []
+            st.session_state.upload_logs = []
+        else:
+            st.session_state.delete_notice = ("error", msg)
+
+        st.session_state.confirm_delete = False
+        st.rerun()
+
+    if col2.button("❌ Hủy"):
+        st.session_state.confirm_delete = False
+        st.rerun()
+
+# =========================
+# GLOBAL NOTICE
+# =========================
+if st.session_state.delete_notice:
+    status, msg = st.session_state.delete_notice
+
+    if status == "success":
+        st.success(f"🗑️ {msg}")
+    else:
+        st.error(f"❌ {msg}")
+
+    st.session_state.delete_notice = None
+
+# =========================
+# CHAT UI
+# =========================
+st.subheader("💬 Chat")
+
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+
 # =========================
 # CHAT INPUT
 # =========================
 if prompt := st.chat_input("Nhập câu hỏi..."):
-    # User message
-    st.session_state.messages.append({
-        "role": "user",
-        "content": prompt
-    })
+    st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Assistant response
     with st.chat_message("assistant"):
         with st.spinner("Đang trả lời..."):
             answer = call_chat_api(prompt)
             st.markdown(answer)
 
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": answer
-    })
+    st.session_state.messages.append({"role": "assistant", "content": answer})
