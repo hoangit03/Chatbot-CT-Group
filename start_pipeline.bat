@@ -26,5 +26,11 @@ start cmd /k ".\.venv\Scripts\activate && python pipeline\workers\chunking_worke
 echo 6. Starting EMBEDDING Worker...
 start cmd /k ".\.venv\Scripts\activate && python pipeline\workers\embedding_worker.py"
 
+echo 5. Starting CHUNKING Worker...
+start cmd /k ".\.venv\Scripts\activate && python pipeline\workers\chunking_worker.py"
+
+echo 6. Starting EMBEDDING Worker...
+start cmd /k ".\.venv\Scripts\activate && python pipeline\workers\embedding_worker.py"
+
 echo All background workers initiated! (Including OCR Worker)
 exit
