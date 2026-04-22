@@ -49,23 +49,45 @@ def _is_gibberish(text: str) -> bool:
     """Phát hiện input vô nghĩa: ký tự lặp, spam, không có từ thật."""
     q = text.strip().lower()
     
-    # Quá ngắn
+    # Quá ngắn (< 3 ký tự)
     if len(q) < 3:
         return True
     
-    # Invalid patterns
+    # Invalid patterns cơ bản (test, asdf, ok, ...)
     if _INVALID_SHORT_RE.match(q):
         return True
     
-    # Quá ít ký tự unique so với độ dài (vd: "aaaaaaa", "gugugu")
-    unique_ratio = len(set(q.replace(" ", ""))) / max(len(q.replace(" ", "")), 1)
-    if len(q) > 4 and unique_ratio < 0.35:
+    # Chuỗi ngắn ≤ 5 ký tự mà không phải pattern đã biết → gibberish
+    # (từ tiếng Việt có nghĩa thường đi kèm dấu hoặc ngữ cảnh dài hơn)
+    if len(q) <= 5 and not _CHITCHAT_RE.match(q):
         return True
     
-    # Không chứa nguyên âm tiếng Việt nào (vô nghĩa)
+    no_space = q.replace(" ", "")
+    
+    # Quá ít ký tự unique (vd: "gugugu", "aaaaa")
+    unique_ratio = len(set(no_space)) / max(len(no_space), 1)
+    if len(no_space) > 4 and unique_ratio < 0.4:
+        return True
+    
+    # Bất kỳ "từ" nào dài > 12 ký tự → rất khó là TV/mã nội bộ hợp lệ
+    # (TV max ~7 ký tự, mã nội bộ ~10: "BNLCĐ-QĐ201")
+    words = q.split()
+    if any(len(w) > 12 for w in words):
+        return True
+    
+    # 4+ phụ âm liên tiếp → không tồn tại trong tiếng Việt
     vietnamese_vowels = set("aeiouyàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ")
-    has_vowel = any(c in vietnamese_vowels for c in q)
-    if not has_vowel and len(q) > 3:
+    consonant_streak = 0
+    for c in no_space:
+        if c.isalpha() and c not in vietnamese_vowels:
+            consonant_streak += 1
+            if consonant_streak >= 4:
+                return True
+        else:
+            consonant_streak = 0
+    
+    # Không chứa nguyên âm nào → vô nghĩa
+    if not any(c in vietnamese_vowels for c in q) and len(q) > 3:
         return True
     
     return False
