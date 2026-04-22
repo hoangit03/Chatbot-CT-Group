@@ -1,4 +1,5 @@
 import os
+import time
 from typing import List, Optional, Dict, Tuple
 from dataclasses import dataclass
 from dotenv import load_dotenv
@@ -53,7 +54,10 @@ class RetrievalService:
             search_kwargs={"k": initial_k, "filter": metadata_filter}
         )
 
+        t_search = time.time()
         docs = retriever.invoke(query)  
+        t_search_done = time.time() - t_search
+        print(f"  ⏱️  [Vector Search] {len(docs)} docs trong {t_search_done:.2f}s")
 
         if score_threshold > 0.0:
             docs = [
@@ -63,8 +67,12 @@ class RetrievalService:
 
         # Step 2: Rerank nếu được bật
         if self.reranker and docs:
-            print(f"Đang rerank {len(docs)} documents...")
+            t_rerank = time.time()
+            print(f"  🔄 [Rerank] Đang chấm điểm {len(docs)} documents...")
             scored_docs: List[Tuple[Document, float]] = self.reranker.rerank(query, docs)
+            t_rerank_done = time.time() - t_rerank
+            print(f"  ⏱️  [Rerank] Hoàn tất trong {t_rerank_done:.2f}s")
+
             # Lấy lại top_k sau rerank
             final_docs = [doc for doc, _ in scored_docs[:self.top_k]]
             for doc, score in scored_docs[:self.top_k]:
@@ -82,5 +90,5 @@ class RetrievalService:
             reranked=reranked
         )
 
-        print(f"Trả về {len(final_docs)} documents {'(đã rerank)' if reranked else ''}")
+        print(f"  ✅ Trả về {len(final_docs)} documents {'(đã rerank)' if reranked else ''}")
         return result
