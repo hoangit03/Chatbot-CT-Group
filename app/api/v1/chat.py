@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from typing import List
 import asyncio
 import json
+import time
 
 from langchain_core.messages import HumanMessage, AIMessage
 
@@ -36,10 +37,11 @@ async def chat(request: ChatRequest):
         history = _build_history(request.chat_history)
 
         # Gọi RAG Service
+        time_start = time.time()
         result = await asyncio.wait_for(
             rag_service.aanswer(query=request.query, chat_history=history),
             timeout=_REQUEST_TIMEOUT,
-        )
+        ) 
 
         # Tạo response custom
         response = ChatResponse(
@@ -48,6 +50,7 @@ async def chat(request: ChatRequest):
             answer=result["answer"],
             # sources=[Source(**s) for s in result["sources"]],
             # retrieved_count=result["retrieved_count"],
+            total_time=f"{time.time() - time_start:.6f}"
         )
 
         return response
