@@ -5,9 +5,11 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from app.models.chat import ChatRequest, ChatResponse, Message, Source
 from app.services.rag_service import RAGService
+import asyncio
+import os
 
 router = APIRouter(prefix="/api/v1", tags=["Chatbot"])
-
+_REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", 60))
 rag_service = RAGService()
 
 
@@ -26,9 +28,9 @@ async def chat(request: ChatRequest):
                     history.append(AIMessage(content=msg.content))
 
         # Gọi RAG Service
-        result = await rag_service.answer(
-            query=request.query,
-            chat_history=history
+        result = await asyncio.wait_for(
+            rag_service.aanswer(query=request.query, chat_history=history),
+            timeout=_REQUEST_TIMEOUT,
         )
 
         # Tạo response custom
