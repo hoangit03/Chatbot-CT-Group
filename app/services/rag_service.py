@@ -20,32 +20,55 @@ _CHITCHAT_RE = re.compile(
     r"""
     ^(\s*(
         xin\s*chào | chào\s*(buổi)?\s*(sáng|trưa|chiều|tối|anh|chị|bạn|em|mn|mọi\s*người)?
-        | hello | hé\s*lô | hi+ | hey | howdy | good\s*(morning|afternoon|evening|night)
-        | alo | ơi
+        | hé\s*l[oô] | hell+o+ | hi+\s*$| hey+ | howdy | good\s*(morning|afternoon|evening|night)
+        | alo+ | ơi | ê\s*$
         | bạn\s*(là\s*(ai|gì)|làm\s*(được\s*)?gì|có\s*thể\s*giúp|giúp\s*được\s*gì|có\s*khỏe|khỏe\s*không|khỏe\s*hong)
         | chatbot\s*(này\s*)?(là\s*gì|dùng\s*để|làm\s*gì)
-        | (em|bạn)\s*(là\s*ai|là\s*gì|tên\s*gì)
+        | (em|bạn)\s*(là\s*ai|là\s*gì|tên\s*gì|ơi)
         | introduce\s*yourself | who\s*are\s*you | what\s*can\s*you\s*do
         | (cảm?\s*ơn|thanks?|thank\s*you|tks|ty|camon|cam\s*on)(.{0,40})?
         | bạn\s*giỏi\s*(quá|thật|vậy) | (hay|tốt|được)\s*(lắm|quá|đấy|vậy)
         | (tạm\s*biệt|bye+|goodbye|gặp\s*lại|hẹn\s*gặp|see\s*you)(.{0,40})?
+        | mấy\s*giờ\s*(rồi)? | bây\s*giờ\s*là\s*mấy\s*giờ | what\s*time
+        | hôm\s*nay\s*(là\s*)?(ngày|thứ)\s*mấy | today\s*is
+        | (tôi|mình)\s*cần\s*(bạn\s*)?(giúp|hỗ\s*trợ)\s*(tôi\s*)?
+        | giúp\s*(tôi|mình)\s*(với|đi|nha|nhé)?
     )\s*)$
     """,
     re.VERBOSE | re.IGNORECASE,
 )
 
-_VAGUE_RE = re.compile(
-    r"""
-    ^(\s*(
-        tôi\s*cần\s*(bạn\s*)?(giúp|hỗ\s*trợ)\s*(tôi\s*)?$
-        | giúp\s*(tôi|mình)\s*(với|đi|nha|nhé)?\s*$
-        | (bạn|em)\s*có\s*khỏe\s*(hong|không|k)\s*$
-        | hỏi\s*(cái|1|một)\s*(gì|chút)\s*$
-        | có\s*ai\s*(đó|ở\s*đây)?\s*$
-    )\s*)$
-    """,
-    re.VERBOSE | re.IGNORECASE,
+# Regex cho invalid/gibberish đơn giản  
+_INVALID_SHORT_RE = re.compile(
+    r"^(\s*([a-z]{1,4}|\d{1,6}|[^\w\s]{2,}|string|test|asdf|qwer|zxcv|\.{2,}|\?{2,}|ok|okay|fine|no|yes)\s*)$",
+    re.IGNORECASE,
 )
+
+
+def _is_gibberish(text: str) -> bool:
+    """Phát hiện input vô nghĩa: ký tự lặp, spam, không có từ thật."""
+    q = text.strip().lower()
+    
+    # Quá ngắn
+    if len(q) < 3:
+        return True
+    
+    # Invalid patterns
+    if _INVALID_SHORT_RE.match(q):
+        return True
+    
+    # Quá ít ký tự unique so với độ dài (vd: "aaaaaaa", "gugugu")
+    unique_ratio = len(set(q.replace(" ", ""))) / max(len(q.replace(" ", "")), 1)
+    if len(q) > 4 and unique_ratio < 0.35:
+        return True
+    
+    # Không chứa nguyên âm tiếng Việt nào (vô nghĩa)
+    vietnamese_vowels = set("aeiouyàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ")
+    has_vowel = any(c in vietnamese_vowels for c in q)
+    if not has_vowel and len(q) > 3:
+        return True
+    
+    return False
 
 
 def _is_skip_rag(query: str) -> str:
@@ -53,18 +76,16 @@ def _is_skip_rag(query: str) -> str:
     Phân loại TRƯỚC khi vào RAG pipeline.
     
     Returns:
-        "chitchat" | "vague" | None
-        - chitchat: chào hỏi, cảm ơn, tạm biệt → bypass RAG
-        - vague: câu quá mơ hồ → bypass RAG, yêu cầu cụ thể hơn
+        "chitchat" | "gibberish" | None
+        - chitchat: chào hỏi, cảm ơn, câu off-topic → bypass RAG
+        - gibberish: input vô nghĩa, spam → bypass RAG
         - None: câu hỏi thật → chạy full RAG pipeline
     """
     q = query.strip()
-    if len(q) < 3:
-        return "vague"
+    if _is_gibberish(q):
+        return "gibberish"
     if _CHITCHAT_RE.match(q):
         return "chitchat"
-    if _VAGUE_RE.match(q):
-        return "vague"
     return None
 
 
