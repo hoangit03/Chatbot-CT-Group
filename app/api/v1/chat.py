@@ -62,20 +62,32 @@ def chat_stream(request: ChatRequest):
 
 def _build_history(request: ChatRequest):
     """Helper: Convert chat_history từ JSON sang LangChain messages.
-    Loại bỏ tin nhắn cuối nếu trùng với câu hỏi hiện tại (tránh duplicate trong prompt).
+    
+    QUAN TRỌNG: Giới hạn tối đa 6 messages gần nhất (3 cặp Q&A).
+    Lý do: num_ctx=4096 tokens. Nếu nhồi 20+ messages lịch sử,
+    tài liệu RAG sẽ bị đẩy ra ngoài context window → LLM ảo giác.
     """
+    MAX_HISTORY_MESSAGES = 6  # 3 cặp Q&A = vừa đủ ngữ cảnh
+    
     history = []
     if request.chat_history:
-        messages_to_process = request.chat_history
+        messages_to_process = list(request.chat_history)
         # Cắt bỏ tin nhắn user cuối cùng nếu trùng với query hiện tại
         if (messages_to_process 
             and messages_to_process[-1].role == "user" 
             and messages_to_process[-1].content.strip() == request.query.strip()):
             messages_to_process = messages_to_process[:-1]
         
+        # Chỉ lấy N messages gần nhất
+        messages_to_process = messages_to_process[-MAX_HISTORY_MESSAGES:]
+        
         for msg in messages_to_process:
             if msg.role == "user":
                 history.append(HumanMessage(content=msg.content))
             elif msg.role == "assistant":
-                history.append(AIMessage(content=msg.content))
+                # Cắt ngắn câu trả lời cũ để tiết kiệm token
+                content = msg.content[:300] if len(msg.content) > 300 else msg.content
+                history.append(AIMessage(content=content))
+    
+    print(f"  📜 [History] {len(history)}/{len(request.chat_history or [])} messages (giới hạn {MAX_HISTORY_MESSAGES})")
     return history
