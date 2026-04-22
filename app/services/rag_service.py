@@ -1,21 +1,59 @@
 import re
+import json
 import time
-from typing import List, Dict, Any
+import logging
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 
 from app.services.retrieval import RetrievalService, RetrievalResult
 from app.services.generation import GenerationService
 
-# ── Prompt cho Query Rewriting (cực ngắn để giảm latency) ──
-_REWRITE_SYSTEM = """Bạn là bộ viết lại câu hỏi. Nhiệm vụ DUY NHẤT: đọc lịch sử hội thoại và câu hỏi follow-up, rồi viết lại thành MỘT câu hỏi ĐỘC LẬP rõ ràng bằng tiếng Việt.
+logger = logging.getLogger(__name__)
 
-Quy tắc:
-- Chỉ trả về DUY NHẤT câu hỏi đã viết lại, không giải thích
-- Giữ nguyên ý nghĩa gốc, chỉ bổ sung ngữ cảnh từ lịch sử
-- Nếu câu hỏi đã rõ ràng (không phụ thuộc ngữ cảnh) → trả về nguyên văn"""
+# ══════════════════════════════════════════════════════════════════════
+# Smart Router System Prompt  (hợp nhất: Intent + Rewrite + Keywords)
+# ══════════════════════════════════════════════════════════════════════
+_SMART_ROUTER_SYSTEM = """Bạn là bộ phân tích câu hỏi cho hệ thống tra cứu tài liệu nội bộ CT-Group.
 
-# ── Pre-RAG Intent Classification ──
-# Những câu này bypass hoàn toàn VectorDB + Reranker + Query Rewrite
+NHIỆM VỤ: Phân tích câu hỏi của người dùng và trả về JSON DUY NHẤT (không giải thích).
+
+Trả về chính xác JSON theo format:
+{"intent": "...", "keywords": "...", "rewritten_query": "..."}
+
+CÁC LOẠI INTENT:
+- "spam": Câu vô nghĩa, không liên quan đến công việc, quy trình, chính sách CT-Group
+  VD: "con mèo bay", "thời tiết hôm nay", "kể chuyện cười đi"
+- "new_question": Câu hỏi MỚI, KHÔNG liên quan gì đến lịch sử hội thoại
+  VD: "chính sách nghỉ phép", "quy trình tuyển dụng" (khi trước đó hỏi về lương)
+- "follow_up": Câu hỏi TIẾP NỐI từ lịch sử hội thoại, cùng chủ đề
+  VD: "chi tiết hơn được không?", "còn trường hợp nào khác?" (khi trước đó đã hỏi cùng chủ đề)
+
+QUY TẮC KEYWORDS:
+- Rút ra TỪ KHÓA CHÍNH liên quan đến quy trình/chính sách/quy định CT-Group
+- Loại bỏ từ thừa: "tôi muốn hỏi", "bạn giúp tôi", "cho tôi biết", "là gì", "như thế nào"
+- Giữ lại danh từ, động từ chính: "nghỉ phép", "lương thưởng", "thử việc", "BHXH"
+- VD: "tôi muốn tìm hiểu về chính sách tiền lương" → keywords: "chính sách tiền lương"
+
+QUY TẮC REWRITTEN_QUERY:
+- Nếu intent=follow_up: viết lại câu hỏi thành câu ĐỘC LẬP, bổ sung ngữ cảnh từ lịch sử
+- Nếu intent=new_question hoặc spam: copy nguyên keywords vào rewritten_query
+
+CHỈ TRẢ VỀ JSON, KHÔNG giải thích."""
+
+
+@dataclass
+class SmartRouteResult:
+    """Kết quả từ Smart Router."""
+    intent: str           # "spam" | "new_question" | "follow_up"
+    keywords: str         # Từ khóa chính rút gọn
+    rewritten_query: str  # Câu hỏi đã viết lại (nếu follow_up)
+    raw_query: str        # Câu hỏi gốc của user
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Pre-RAG Regex Filters (Layer 1 — chạy TRƯỚC Smart Router)
+# ══════════════════════════════════════════════════════════════════════
 _CHITCHAT_RE = re.compile(
     r"""
     ^(\s*(
@@ -38,7 +76,6 @@ _CHITCHAT_RE = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
-# Regex cho invalid/gibberish đơn giản  
 _INVALID_SHORT_RE = re.compile(
     r"^(\s*([a-z]{1,4}|\d{1,6}|[^\w\s]{2,}|string|test|asdf|qwer|zxcv|\.{2,}|\?{2,}|ok|okay|fine|no|yes)\s*)$",
     re.IGNORECASE,
@@ -48,34 +85,24 @@ _INVALID_SHORT_RE = re.compile(
 def _is_gibberish(text: str) -> bool:
     """Phát hiện input vô nghĩa: ký tự lặp, spam, không có từ thật."""
     q = text.strip().lower()
-    
-    # Quá ngắn (< 3 ký tự)
+
     if len(q) < 3:
         return True
-    
-    # Invalid patterns cơ bản (test, asdf, ok, ...)
     if _INVALID_SHORT_RE.match(q):
         return True
-    
-    # Chuỗi ngắn ≤ 5 ký tự mà không phải pattern đã biết → gibberish
-    # (từ tiếng Việt có nghĩa thường đi kèm dấu hoặc ngữ cảnh dài hơn)
     if len(q) <= 5 and not _CHITCHAT_RE.match(q):
         return True
-    
+
     no_space = q.replace(" ", "")
-    
-    # Quá ít ký tự unique (vd: "gugugu", "aaaaa")
+
     unique_ratio = len(set(no_space)) / max(len(no_space), 1)
     if len(no_space) > 4 and unique_ratio < 0.4:
         return True
-    
-    # Bất kỳ "từ" nào dài > 12 ký tự → rất khó là TV/mã nội bộ hợp lệ
-    # (TV max ~7 ký tự, mã nội bộ ~10: "BNLCĐ-QĐ201")
+
     words = q.split()
     if any(len(w) > 12 for w in words):
         return True
-    
-    # 4+ phụ âm liên tiếp → không tồn tại trong tiếng Việt
+
     vietnamese_vowels = set("aeiouyàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ")
     consonant_streak = 0
     for c in no_space:
@@ -85,24 +112,15 @@ def _is_gibberish(text: str) -> bool:
                 return True
         else:
             consonant_streak = 0
-    
-    # Không chứa nguyên âm nào → vô nghĩa
+
     if not any(c in vietnamese_vowels for c in q) and len(q) > 3:
         return True
-    
+
     return False
 
 
-def _is_skip_rag(query: str) -> str:
-    """
-    Phân loại TRƯỚC khi vào RAG pipeline.
-    
-    Returns:
-        "chitchat" | "gibberish" | None
-        - chitchat: chào hỏi, cảm ơn, câu off-topic → bypass RAG
-        - gibberish: input vô nghĩa, spam → bypass RAG
-        - None: câu hỏi thật → chạy full RAG pipeline
-    """
+def _is_skip_rag(query: str) -> Optional[str]:
+    """Layer 1: Regex filter — bypass cực nhanh (~0ms)."""
     q = query.strip()
     if _is_gibberish(q):
         return "gibberish"
@@ -111,106 +129,188 @@ def _is_skip_rag(query: str) -> str:
     return None
 
 
+# ══════════════════════════════════════════════════════════════════════
+# RAG Service — Smart Router Architecture
+# ══════════════════════════════════════════════════════════════════════
+
 class RAGService:
-    """RAG Service: Pre-RAG Intent Classification + Query Rewriting + RAG Pipeline"""
+    """RAG Service: Regex Filter → Smart Router → Retrieval → Generation"""
 
     def __init__(self):
         self.retrieval = RetrievalService()
         self.generation = GenerationService()
 
-    def _rewrite_query(self, query: str, chat_history: List[BaseMessage]) -> str:
+    def _smart_route(self, query: str, chat_history: List[BaseMessage]) -> SmartRouteResult:
         """
-        Viết lại câu hỏi follow-up thành câu hỏi độc lập.
+        🧠 Smart Router: 1 LLM call duy nhất thay thế Query Rewrite.
         
-        Ví dụ:
-          History: "thử việc thành công" → answer...
-          Follow-up: "chi tiết hơn được không?"
-          Rewritten: "hướng dẫn chi tiết cách thử việc thành công tại CT Group"
+        Hợp nhất 3 chức năng:
+          1. Intent Detection (spam / new_question / follow_up)
+          2. Keyword Extraction (rút gọn query → keywords chính)
+          3. Query Rewriting (nếu follow_up)
+
+        Returns:
+            SmartRouteResult với intent, keywords, rewritten_query
         """
-        # Nếu không có history → không cần rewrite
+        # Nếu không có history → luôn là new_question, chỉ cần extract keywords
         if not chat_history:
-            return query
+            # Gọi LLM để extract keywords (vẫn cần vì user hay viết dài)
+            route_prompt = f"""Câu hỏi: {query}
 
-        # Build conversation context cho LLM rewriter
-        history_text = []
-        for msg in chat_history[-4:]:  # Chỉ lấy 2 cặp Q&A gần nhất (tiết kiệm token)
-            if isinstance(msg, HumanMessage):
-                history_text.append(f"Người dùng: {msg.content[:200]}")
-            elif isinstance(msg, AIMessage):
-                history_text.append(f"Bot: {msg.content[:200]}")
+(Không có lịch sử hội thoại)
 
-        rewrite_prompt = f"""Lịch sử hội thoại:
+Trả về JSON:"""
+        else:
+            # Build history context
+            history_text = []
+            for msg in chat_history[-4:]:
+                if isinstance(msg, HumanMessage):
+                    history_text.append(f"Người dùng: {msg.content[:200]}")
+                elif isinstance(msg, AIMessage):
+                    history_text.append(f"Bot: {msg.content[:150]}")  
+
+            route_prompt = f"""Lịch sử hội thoại:
 {chr(10).join(history_text)}
 
-Câu hỏi follow-up: {query}
+Câu hỏi hiện tại: {query}
 
-Viết lại thành câu hỏi độc lập:"""
+Trả về JSON:"""
 
         messages = [
-            SystemMessage(content=_REWRITE_SYSTEM),
-            HumanMessage(content=rewrite_prompt),
+            SystemMessage(content=_SMART_ROUTER_SYSTEM),
+            HumanMessage(content=route_prompt),
         ]
 
         try:
-            rewritten = self.generation.llm_client.invoke(messages).strip()
-            # Đảm bảo kết quả hợp lệ
-            if rewritten and len(rewritten) > 3 and len(rewritten) < 500:
-                return rewritten
-            return query
+            t0 = time.time()
+            raw_response = self.generation.llm_client.invoke(messages).strip()
+            t_elapsed = time.time() - t0
+
+            # Parse JSON từ response
+            result = self._parse_router_json(raw_response, query)
+
+            print(f"\n  🧠 [Smart Router] {t_elapsed:.2f}s")
+            print(f"      Intent  : {result.intent}")
+            print(f"      Keywords: \"{result.keywords}\"")
+            if result.intent == "follow_up":
+                print(f"      Rewrite : \"{result.rewritten_query}\"")
+
+            return result
+
         except Exception as e:
-            print(f"  ⚠️  [Query Rewrite] Lỗi: {e} → Dùng query gốc")
-            return query
+            logger.warning(f"[Smart Router] Error: {e} → fallback to new_question")
+            print(f"  ⚠️  [Smart Router] Lỗi: {e} → Fallback: new_question")
+            return SmartRouteResult(
+                intent="new_question",
+                keywords=query,
+                rewritten_query=query,
+                raw_query=query,
+            )
+
+    def _parse_router_json(self, raw: str, original_query: str) -> SmartRouteResult:
+        """Parse JSON output từ Smart Router, với fallback robust."""
+        # Thử tìm JSON trong response
+        json_match = re.search(r'\{[^}]+\}', raw, re.DOTALL)
+        if json_match:
+            try:
+                data = json.loads(json_match.group())
+                intent = data.get("intent", "new_question")
+                keywords = data.get("keywords", original_query)
+                rewritten = data.get("rewritten_query", keywords)
+
+                # Validate intent
+                if intent not in ("spam", "new_question", "follow_up"):
+                    intent = "new_question"
+
+                # Validate keywords không rỗng
+                if not keywords or len(keywords.strip()) < 2:
+                    keywords = original_query
+
+                # Validate rewritten_query hợp lệ
+                if not rewritten or len(rewritten.strip()) < 3 or len(rewritten) > 500:
+                    rewritten = keywords
+
+                return SmartRouteResult(
+                    intent=intent,
+                    keywords=keywords.strip(),
+                    rewritten_query=rewritten.strip(),
+                    raw_query=original_query,
+                )
+            except json.JSONDecodeError:
+                pass
+
+        # Fallback: không parse được JSON → coi là new_question
+        logger.warning(f"[Smart Router] Cannot parse JSON: {raw[:200]}")
+        return SmartRouteResult(
+            intent="new_question",
+            keywords=original_query,
+            rewritten_query=original_query,
+            raw_query=original_query,
+        )
+
+    # ══════════════════════════════════════════════════════════════
+    # answer() — Blocking mode
+    # ══════════════════════════════════════════════════════════════
 
     def answer(self, query: str, chat_history: List[BaseMessage] = None) -> Dict[str, Any]:
         chat_history = chat_history or []
 
         t_total = time.time()
-        t_rewrite = 0.0
+        t_route = 0.0
         t_retrieval = 0.0
 
-        # ── Bước -1: Pre-RAG Intent Classification ──
+        # ── Layer 1: Regex Filter (bypass cực nhanh) ──
         skip_reason = _is_skip_rag(query)
 
         if skip_reason:
             print(f"\n  ⚡ [Pre-RAG] Bypass RAG → Lý do: {skip_reason} | Query: \"{query}\"")
-            # Tạo RetrievalResult rỗng, Generation sẽ dùng CHITCHAT/SIMPLE prompt
-            retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, total_retrieved=0, reranked=False)
+            retrieval_result = RetrievalResult(
+                documents=[], query=query, top_k=0, total_retrieved=0, reranked=False
+            )
         else:
-            # ── Bước 0: Query Rewriting (nếu có chat_history) ──
+            # ── Layer 2: Smart Router (1 LLM call) ──
             t_rw = time.time()
-            search_query = self._rewrite_query(query, chat_history)
-            t_rewrite = time.time() - t_rw
+            route = self._smart_route(query, chat_history)
+            t_route = time.time() - t_rw
 
-            if search_query != query:
-                print(f"\n  ✏️  [Query Rewrite] {t_rewrite:.2f}s")
-                print(f"      Gốc     : \"{query}\"")
-                print(f"      Viết lại: \"{search_query}\"")
+            # Xử lý theo intent
+            if route.intent == "spam":
+                print(f"  🚫 [Smart Router] SPAM detected → Bypass RAG")
+                retrieval_result = RetrievalResult(
+                    documents=[], query=query, top_k=0, total_retrieved=0, reranked=False
+                )
             else:
-                print(f"\n  ✏️  [Query Rewrite] Không cần viết lại (query đã rõ ràng)")
+                # Chọn search query: keywords (new) hoặc rewritten (follow_up)
+                if route.intent == "follow_up":
+                    search_query = route.rewritten_query
+                else:
+                    search_query = route.keywords
 
-            # ── Bước 1: Retrieval (dùng search_query đã rewrite) ──
-            t0 = time.time()
-            retrieval_result = self.retrieval.retrieve(query=search_query)
-            t_retrieval = time.time() - t0
+                print(f"  🔍 [Search Query] \"{search_query}\"")
 
-            # Ghi đè query gốc lại để Generation nhận đúng câu hỏi người dùng
-            retrieval_result.query = query
+                # ── Layer 3: Retrieval ──
+                t0 = time.time()
+                retrieval_result = self.retrieval.retrieve(query=search_query)
+                t_retrieval = time.time() - t0
 
-        # ── Bước 2: Generation (LLM Inference) ──
+                # Ghi đè query gốc cho Generation
+                retrieval_result.query = query
+
+        # ── Layer 4: Generation ──
         t1 = time.time()
         answer = self.generation.generate(retrieval_result, chat_history)
         t_generation = time.time() - t1
 
         t_pipeline = time.time() - t_total
 
-        # ── Debug Timing Report ──
+        # ── Timing Report ──
         print(f"\n{'='*60}")
         print(f"  ⏱️  PIPELINE TIMING REPORT")
         print(f"{'='*60}")
         if skip_reason:
             print(f"  ⚡ Pre-RAG Bypass                    : {skip_reason}")
         else:
-            print(f"  ✏️  Query Rewrite                    : {t_rewrite:.2f}s")
+            print(f"  🧠 Smart Router                     : {t_route:.2f}s")
             print(f"  📥 Retrieval (Embed+Search+Rerank) : {t_retrieval:.2f}s")
         print(f"  🤖 LLM Generation                  : {t_generation:.2f}s")
         print(f"  ──────────────────────────────────────────────")
@@ -230,43 +330,51 @@ Viết lại thành câu hỏi độc lập:"""
             "retrieved_count": len(retrieval_result.documents)
         }
 
+    # ══════════════════════════════════════════════════════════════
+    # stream_answer() — Streaming mode
+    # ══════════════════════════════════════════════════════════════
+
     def stream_answer(self, query: str, chat_history: List[BaseMessage] = None):
-        """Generator: Pre-RAG Classification → Query Rewriting → Retrieval → Stream LLM."""
+        """Generator: Regex Filter → Smart Router → Retrieval → Stream LLM."""
         chat_history = chat_history or []
 
         t_total = time.time()
-        t_rewrite = 0.0
+        t_route = 0.0
         t_retrieval = 0.0
 
-        # ── Bước -1: Pre-RAG Intent Classification ──
+        # ── Layer 1: Regex Filter ──
         skip_reason = _is_skip_rag(query)
 
         if skip_reason:
             print(f"\n  ⚡ [Pre-RAG] Bypass RAG → Lý do: {skip_reason} | Query: \"{query}\"")
-            retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, total_retrieved=0, reranked=False)
+            retrieval_result = RetrievalResult(
+                documents=[], query=query, top_k=0, total_retrieved=0, reranked=False
+            )
         else:
-            # Bước 0: Query Rewriting
+            # ── Layer 2: Smart Router ──
             t_rw = time.time()
-            search_query = self._rewrite_query(query, chat_history)
-            t_rewrite = time.time() - t_rw
+            route = self._smart_route(query, chat_history)
+            t_route = time.time() - t_rw
 
-            if search_query != query:
-                print(f"\n  ✏️  [Query Rewrite] {t_rewrite:.2f}s")
-                print(f"      Gốc     : \"{query}\"")
-                print(f"      Viết lại: \"{search_query}\"")
+            if route.intent == "spam":
+                print(f"  🚫 [Smart Router] SPAM → Bypass RAG")
+                retrieval_result = RetrievalResult(
+                    documents=[], query=query, top_k=0, total_retrieved=0, reranked=False
+                )
             else:
-                print(f"\n  ✏️  [Query Rewrite] Không cần viết lại")
+                # search_query = keywords (new) hoặc rewritten_query (follow_up)
+                search_query = route.rewritten_query if route.intent == "follow_up" else route.keywords
+                print(f"  🔍 [Search Query] \"{search_query}\"")
 
-            # Bước 1: Retrieval (dùng search_query đã rewrite)
-            t0 = time.time()
-            retrieval_result = self.retrieval.retrieve(query=search_query)
-            t_retrieval = time.time() - t0
-            print(f"  ⏱️  [Stream] Retrieval xong trong {t_retrieval:.2f}s")
+                # ── Layer 3: Retrieval ──
+                t0 = time.time()
+                retrieval_result = self.retrieval.retrieve(query=search_query)
+                t_retrieval = time.time() - t0
+                print(f"  ⏱️  [Stream] Retrieval xong trong {t_retrieval:.2f}s")
 
-            # Ghi đè query gốc lại cho Generation
-            retrieval_result.query = query
+                retrieval_result.query = query
 
-        # Bước 2: Stream LLM Generation
+        # ── Layer 4: Stream LLM ──
         t1 = time.time()
         total_chars = 0
         for chunk in self.generation.stream_generate(retrieval_result, chat_history):
@@ -276,14 +384,14 @@ Viết lại thành câu hỏi độc lập:"""
         t_generation = time.time() - t1
         t_pipeline = time.time() - t_total
 
-        # Debug Timing Report
+        # Timing Report
         print(f"\n{'='*60}")
         print(f"  ⏱️  STREAMING PIPELINE TIMING REPORT")
         print(f"{'='*60}")
         if skip_reason:
             print(f"  ⚡ Pre-RAG Bypass                    : {skip_reason}")
         else:
-            print(f"  ✏️  Query Rewrite                    : {t_rewrite:.2f}s")
+            print(f"  🧠 Smart Router                     : {t_route:.2f}s")
             print(f"  📥 Retrieval                        : {t_retrieval:.2f}s")
         print(f"  🤖 LLM Stream Generation            : {t_generation:.2f}s ({total_chars} chars)")
         print(f"  ──────────────────────────────────────────────")
