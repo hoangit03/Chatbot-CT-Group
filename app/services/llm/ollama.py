@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List, Optional
+from typing import List, Optional, AsyncIterator
 from dotenv import load_dotenv
 
 from app.core.exception.llm_exception import LLMException
@@ -105,3 +105,12 @@ class OllamaLLMClient(BaseLLMClient):
                 f"semaphore={sem._value}/{_MAX_CONCURRENT_LLM}"  # type: ignore[attr-defined]
             )
             return await asyncio.to_thread(self.invoke, messages)
+         
+    async def astream(self, messages: List[BaseMessage]) -> AsyncIterator[str]:
+        """Native async streaming — không cần thread."""
+        sem = _get_semaphore()
+        async with sem:
+            llm = self.get_llm()
+            async for chunk in llm.astream(messages):
+                if chunk.content:
+                    yield chunk.content

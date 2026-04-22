@@ -38,6 +38,13 @@ class ChromaVectorStore(BaseVectorStore):
         self._max_concurrent = int(os.getenv("CHROMA_MAX_CONCURRENT", _CHROMA_WORKERS))
         self._sem: Optional[asyncio.Semaphore] = None
 
+    
+    def _get_sem(self) -> asyncio.Semaphore:
+        """Lazy-init semaphore trong running event loop."""
+        if self._sem is None:
+            self._sem = asyncio.Semaphore(self._max_concurrent)
+        return self._sem
+
     # ====================== HELPER METHODS ======================
     def _get_or_create_vectorstore(self, embedding: Embeddings) -> Chroma:
         """Load DB đã tồn tại hoặc tạo mới"""
@@ -133,18 +140,16 @@ class ChromaVectorStore(BaseVectorStore):
         )
         return results
 
+
     def _get_retriever_sync(self, search_kwargs: Optional[dict] = None):
-        """Trả về retriever đã sẵn sàng sử dụng cho Retrieval"""
         if not self._vectorstore:
             from app.services.embedder import Embedder
-            embedding_model = Embedder().get_embedding_model()
-            self._get_or_create_vectorstore(embedding_model)
-
+            self._get_or_create_vectorstore(Embedder().get_embedding_model())
+ 
         safe_kwargs = {
             k: v for k, v in (search_kwargs or {}).items()
             if k != "score_threshold"
         }
-
         retriever = self._vectorstore.as_retriever(search_kwargs=safe_kwargs)
         print(f"[Chroma] Retriever sẵn sàng (k={safe_kwargs.get('k')})")
         return retriever
@@ -171,7 +176,7 @@ class ChromaVectorStore(BaseVectorStore):
     ) -> None:
         """Bất đồng bộ — offload I/O-heavy ingest sang executor."""
         loop = asyncio.get_running_loop()
-        async with self._sem:
+        async with self._get_sem():
             await loop.run_in_executor(
                 _chroma_executor,
                 self._add_documents_sync,
@@ -193,7 +198,7 @@ class ChromaVectorStore(BaseVectorStore):
         để 2 tác vụ có thể dùng thread pool riêng biệt.
         """
         loop = asyncio.get_running_loop()
-        async with self._sem:
+        async with self._get_sem():
             return await loop.run_in_executor(
                 _chroma_executor,
                 self._similarity_search_sync,
@@ -208,7 +213,7 @@ class ChromaVectorStore(BaseVectorStore):
         Gọi một lần lúc startup, sau đó dùng asimilarity_search trực tiếp.
         """
         loop = asyncio.get_running_loop()
-        async with self._sem:
+        async with self._get_sem():
             return await loop.run_in_executor(
                 _chroma_executor,
                 self._get_retriever_sync,

@@ -23,7 +23,7 @@ class Embedder(Embeddings):
     _instance: Optional["Embedder"] = None
     _embedding_model: Optional[Embeddings] = None
 
-    _sem: Optional[Embeddings] = None
+    _sem: Optional[asyncio.Semaphore] = None
 
     def __new__(cls):
         if cls._instance is None:
