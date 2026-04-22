@@ -86,11 +86,21 @@ class OllamaLLMClient(BaseLLMClient):
 
 
     def invoke(self, messages: List[BaseMessage]) -> str:
+        import time
         try:
             llm = self.get_llm()
             logger.debug(f"[LLM] Gửi prompt với {len(messages)} messages")
+            
+            t0 = time.time()
             response = llm.invoke(messages)
-            logger.info(f"[LLM] Nhận được response ({len(response.content)} ký tự)")
+            t_llm = time.time() - t0
+            
+            char_count = len(response.content)
+            token_est = char_count // 4  # Ước tính token cho tiếng Việt
+            speed = token_est / t_llm if t_llm > 0 else 0
+            
+            print(f"  ⏱️  [LLM] Sinh {char_count} ký tự (~{token_est} tokens) trong {t_llm:.2f}s ({speed:.1f} tok/s)")
+            logger.info(f"[LLM] Nhận được response ({char_count} ký tự)")
             return response.content
         except LLMException:
             raise

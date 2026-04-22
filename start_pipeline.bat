@@ -9,7 +9,7 @@ start cmd /k ".\.venv\Scripts\activate && uvicorn app.api_bot:app --host 0.0.0.0
 
 
 echo 1. Starting FastAPI ETL Orchestrator...
-start cmd /k ".\.venv\Scripts\activate && uvicorn app.main_legacy:app --host 0.0.0.0 --port 8000 --reload"
+start cmd /k ".\.venv\Scripts\activate && uvicorn app.api_etl:app --host 0.0.0.0 --port 8000 --reload"
 
 echo 2. Starting OCR Worker...
 start cmd /k ".\.venv\Scripts\activate && python pipeline\workers\ocr_worker.py"

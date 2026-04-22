@@ -80,10 +80,20 @@ def _sanitize_metadata(value: str, max_length: int = 200) -> str:
     return value[:max_length]
 
 
+def _get_source_name(doc) -> str:
+    """Lấy tên file nguồn từ metadata (thử nhiều key)."""
+    return (
+        doc.metadata.get('source_file')
+        or doc.metadata.get('source')
+        or doc.metadata.get('file_name')
+        or 'Không rõ nguồn'
+    )
+
+
 def _build_safe_context(documents) -> str:
     safe_parts = []
     for i, doc in enumerate(documents):
-        file_name = _sanitize_metadata(doc.metadata.get('file_name', 'Không rõ nguồn'))
+        file_name = _sanitize_metadata(_get_source_name(doc))
         content = _sanitize_document_content(doc.page_content, file_name)
         safe_parts.append(
             f"===BEGIN_DOC id={i+1} source=\"{file_name}\"===\n"
@@ -91,6 +101,24 @@ def _build_safe_context(documents) -> str:
             f"===END_DOC id={i+1}==="
         )
     return "\n\n".join(safe_parts)
+
+
+def _build_source_citation(documents) -> str:
+    """Tạo phần nguồn tham khảo từ metadata (KHÔNG phụ thuộc LLM)."""
+    if not documents:
+        return ""
+    # Lấy danh sách unique source names
+    sources = []
+    seen = set()
+    for doc in documents:
+        name = _get_source_name(doc)
+        if name not in seen and name != 'Không rõ nguồn':
+            seen.add(name)
+            sources.append(name)
+    if not sources:
+        return ""
+    source_lines = "\n".join(f"- {s}" for s in sources)
+    return f"\n\n**Nguồn tham khảo:**\n{source_lines}"
 
 
 # =============================================================================
@@ -369,6 +397,9 @@ class GenerationService:
         elif not retrieval_result.documents:
             prompt_type = PromptType.SIMPLE
             prompt_vars = {"question": question, "chat_history": chat_history}
+            print(f"  🚫 [Intent] SIMPLE — Không có tài liệu liên quan → Chống Hallucination")
+            logger.info("[Generation] Intent: SIMPLE (no docs → anti-hallucination)")
+
         else:
             context = _build_safe_context(retrieval_result.documents)
             prompt_type = PromptType.RAG
@@ -380,7 +411,97 @@ class GenerationService:
  
         prompt = PromptRegistry.get(prompt_type)
         messages = prompt.invoke(prompt_vars).messages
-        return messages, original_lang
+
+        # ── DEBUG: In Prompt gửi vào LLM ──
+        print(f"\n  {'─'*70}")
+        print(f"  📨 PROMPT GỬI VÀO LLM ({len(messages)} messages):")
+        print(f"  {'─'*70}")
+        for i, msg in enumerate(messages):
+            role = msg.__class__.__name__.replace("Message", "")
+            content = getattr(msg, 'content', '')
+            content_len = len(content) if isinstance(content, str) else 0
+            snippet = content[:200].replace('\n', '↵ ') if isinstance(content, str) else str(content)[:200]
+            print(f"  [{i+1}] 🏷️  Role: {role} | {content_len} ký tự")
+            print(f"      📝 \"{snippet}...\"")
+            print()
+        print(f"  {'─'*70}")
+
+        raw_answer = self.llm_client.invoke(messages)
+
+        # 3 — Validate output
+        validated = _validate_output(raw_answer, original_lang)
+
+        # 4 — Gắn nguồn tham khảo bằng CODE (không phụ thuộc LLM)
+        if prompt_type == PromptType.RAG and retrieval_result.documents:
+            validated += _build_source_citation(retrieval_result.documents)
+
+        return validated
+
+    def stream_generate(
+        self,
+        retrieval_result: RetrievalResult,
+        chat_history: List[BaseMessage] = None,
+    ):
+        """Generator: Cùng logic Intent Detection, nhưng yield từng chunk từ LLM."""
+
+        # 1a — Normalize
+        question = _decode_and_normalize(retrieval_result.query)
+
+        # 1b — Strip injection prefix
+        question, had_injection_prefix = _extract_real_question(question)
+
+        # 1d — Audit history
+        chat_history = _audit_chat_history(chat_history or [])
+
+        # 1c — Intent detection
+        if _is_invalid_query(question):
+            prompt_type = PromptType.INVALID_QUERY
+            prompt_vars = {"question": question}
+        elif _is_jailbreak(question):
+            prompt_type = PromptType.INVALID_QUERY
+            prompt_vars = {"question": "Câu hỏi không hợp lệ"}
+        elif _is_chitchat(question):
+            prompt_type = PromptType.CHITCHAT
+            prompt_vars = {"question": question, "chat_history": chat_history}
+        elif not retrieval_result.documents:
+            prompt_type = PromptType.SIMPLE
+            prompt_vars = {"question": question, "chat_history": chat_history}
+            print(f"  🚫 [Stream Intent] SIMPLE — Không có tài liệu → Chống Hallucination")
+        else:
+            context = _build_safe_context(retrieval_result.documents)
+            prompt_type = PromptType.RAG
+            prompt_vars = {
+                "question": question,
+                "context": context,
+                "chat_history": chat_history,
+            }
+            logger.info(f"[Stream] Intent: RAG | Docs: {len(retrieval_result.documents)}")
+
+        # 2 — Stream Generate
+        prompt = PromptRegistry.get(prompt_type)
+        messages = prompt.invoke(prompt_vars).messages
+
+        # ── DEBUG: In Prompt gửi vào LLM (Stream) ──
+        print(f"\n  {'─'*70}")
+        print(f"  📨 PROMPT GỬI VÀO LLM - STREAM ({len(messages)} messages):")
+        print(f"  {'─'*70}")
+        for i, msg in enumerate(messages):
+            role = msg.__class__.__name__.replace("Message", "")
+            content = getattr(msg, 'content', '')
+            content_len = len(content) if isinstance(content, str) else 0
+            snippet = content[:200].replace('\n', '↵ ') if isinstance(content, str) else str(content)[:200]
+            print(f"  [{i+1}] 🏷️  Role: {role} | {content_len} ký tự")
+            print(f"      📝 \"{snippet}...\"")
+            print()
+        print(f"  {'─'*70}")
+
+        for chunk in self.llm_client.stream(messages):
+            yield chunk
+
+        # Gắn nguồn tham khảo bằng CODE sau khi stream xong
+        if prompt_type == PromptType.RAG and retrieval_result.documents:
+            yield _build_source_citation(retrieval_result.documents)
+
 
     def generate(
         self,
@@ -402,4 +523,3 @@ class GenerationService:
         messages, original_lang = self._build_prompt(retrieval_result, chat_history)
         raw_answer = await self.llm_client.ainvoke(messages)
         return _validate_output(raw_answer, original_lang)
-    

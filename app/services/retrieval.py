@@ -1,4 +1,5 @@
 import os
+import time
 from typing import List, Optional, Dict, Tuple
 from dataclasses import dataclass
 from dotenv import load_dotenv
@@ -50,8 +51,26 @@ class RetrievalService:
         retriever = self.vector_store.get_retriever(
             search_kwargs={"k": initial_k, "filter": metadata_filter}
         )
-        docs = retriever.invoke(query)
- 
+
+        t_search = time.time()
+        docs = retriever.invoke(query)  
+        t_search_done = time.time() - t_search
+        print(f"  ⏱️  [Vector Search] {len(docs)} docs trong {t_search_done:.2f}s")
+
+        # ── DEBUG: Hiển thị dữ liệu trích xuất từ VectorDB ──
+        if docs:
+            print(f"\n  {'─'*70}")
+            print(f"  📚 DỮ LIỆU TRÍCH XUẤT TỪ VECTORDB ({len(docs)} chunks):")
+            print(f"  {'─'*70}")
+            for i, doc in enumerate(docs):
+                source = doc.metadata.get("source_file") or doc.metadata.get("source") or doc.metadata.get("file_name") or "N/A"
+                chunk_id = doc.metadata.get("chunk_id", "?")
+                snippet = doc.page_content[:150].replace('\n', ' ')
+                print(f"  [{i+1}] 📄 Nguồn: {source}")
+                print(f"      🏷️  Chunk ID: {chunk_id}")
+                print(f"      📝 Nội dung: \"{snippet}...\"")
+                print()
+
         if score_threshold > 0.0:
             docs = [
                 d for d in docs
@@ -59,10 +78,37 @@ class RetrievalService:
             ]
  
         if self.reranker and docs:
-            scored: List[Tuple[Document, float]] = self.reranker.rerank(query, docs)
-            final_docs = [d for d, _ in scored[: self.top_k]]
-            for d, score in scored[: self.top_k]:
-                d.metadata["rerank_score"] = float(score)
+            t_rerank = time.time()
+            print(f"  🔄 [Rerank] Đang chấm điểm {len(docs)} documents...")
+            scored_docs: List[Tuple[Document, float]] = self.reranker.rerank(query, docs)
+            t_rerank_done = time.time() - t_rerank
+            print(f"  ⏱️  [Rerank] Hoàn tất trong {t_rerank_done:.2f}s")
+
+            # ── DEBUG: Bảng xếp hạng Reranker ──
+            print(f"\n  {'─'*70}")
+            print(f"  🏆 BẢNG XẾP HẠNG SAU RERANK (Top {self.top_k} được chọn):")
+            print(f"  {'─'*70}")
+            print(f"  {'Hạng':<6} {'Score':<12} {'Nguồn':<40} {'Nội dung (50 ký tự)'}")
+            print(f"  {'─'*70}")
+            for rank, (doc, score) in enumerate(scored_docs):
+                source = doc.metadata.get("source_file") or doc.metadata.get("source") or doc.metadata.get("file_name") or "N/A"
+                snippet = doc.page_content[:50].replace('\n', ' ')
+                marker = "✅" if rank < self.top_k else "  "
+                print(f"  {marker} #{rank+1:<4} {score:<12.4f} {source:<40} \"{snippet}...\"")
+            print(f"  {'─'*70}\n")
+
+            # ── Lọc bỏ docs có score ÂM (không liên quan) ──
+            positive_docs = [(doc, score) for doc, score in scored_docs if score > 0]
+            if positive_docs:
+                # Chỉ lấy những docs thật sự liên quan
+                final_docs = [doc for doc, _ in positive_docs[:self.top_k]]
+                for doc, score in positive_docs[:self.top_k]:
+                    doc.metadata["rerank_score"] = float(score)
+                print(f"  🧹 [Filter] Lọc: {len(positive_docs)} docs có score > 0 / {len(scored_docs)} tổng")
+            else:
+                # KHÔNG nhồi docs rác → trả rỗng để Generation dùng prompt SIMPLE
+                final_docs = []
+                print(f"  🚫 [Filter] Tất cả {len(scored_docs)} docs score âm → Trả rỗng (chống Hallucination)")
             reranked = True
         else:
             final_docs = docs[: self.top_k]
