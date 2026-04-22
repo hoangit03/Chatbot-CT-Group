@@ -61,7 +61,7 @@ def run_evaluation(excel_path: str):
     # 4. Chạy đánh giá
     print("\n🔬 Đang chạy RAGAS evaluation...")
 
-    judge_llm = LangchainLLMWrapper(ChatOllama(model="qwen3:1.7b", temperature=0))
+    judge_llm = LangchainLLMWrapper(ChatOllama(model="qwen3:1.7b", temperature=0.1))
     judge_embeddings = LangchainEmbeddingsWrapper(
         HuggingFaceEmbeddings(model_name="intfloat/multilingual-e5-large")
     )
