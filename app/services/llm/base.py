@@ -12,4 +12,11 @@ class BaseLLMClient(ABC):
     def invoke(self, messages: List[BaseMessage]) -> str:
         pass
 
+    @abstractmethod
+    async def ainvoke(self, messages: List[BaseMessage]) -> str:
+        """Bất đồng bộ — dùng trong serve path (FastAPI).
+        Subclass phải await asyncio.to_thread() hoặc native async call.
+        """
+        pass
+
 
