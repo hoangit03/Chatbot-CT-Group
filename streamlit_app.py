@@ -234,7 +234,7 @@ if prompt := st.chat_input("Nhập câu hỏi..."):
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant"):         
         # Streaming: Bot gõ từng chữ trực tiếp trên giao diện
         answer = st.write_stream(stream_chat_api(prompt))
 
