@@ -405,3 +405,48 @@ class GenerationService:
 
         # 3 — Validate output
         return _validate_output(raw_answer, original_lang)
+
+    def stream_generate(
+        self,
+        retrieval_result: RetrievalResult,
+        chat_history: List[BaseMessage] = None,
+    ):
+        """Generator: Cùng logic Intent Detection, nhưng yield từng chunk từ LLM."""
+
+        # 1a — Normalize
+        question = _decode_and_normalize(retrieval_result.query)
+
+        # 1b — Strip injection prefix
+        question, had_injection_prefix = _extract_real_question(question)
+
+        # 1d — Audit history
+        chat_history = _audit_chat_history(chat_history or [])
+
+        # 1c — Intent detection
+        if _is_invalid_query(question):
+            prompt_type = PromptType.INVALID_QUERY
+            prompt_vars = {"question": question}
+        elif _is_jailbreak(question):
+            prompt_type = PromptType.INVALID_QUERY
+            prompt_vars = {"question": "Câu hỏi không hợp lệ"}
+        elif _is_chitchat(question):
+            prompt_type = PromptType.CHITCHAT
+            prompt_vars = {"question": question, "chat_history": chat_history}
+        elif not retrieval_result.documents:
+            prompt_type = PromptType.SIMPLE
+            prompt_vars = {"question": question, "chat_history": chat_history}
+        else:
+            context = _build_safe_context(retrieval_result.documents)
+            prompt_type = PromptType.RAG
+            prompt_vars = {
+                "question": question,
+                "context": context,
+                "chat_history": chat_history,
+            }
+            logger.info(f"[Stream] Intent: RAG | Docs: {len(retrieval_result.documents)}")
+
+        # 2 — Stream Generate
+        prompt = PromptRegistry.get(prompt_type)
+        messages = prompt.invoke(prompt_vars).messages
+        for chunk in self.llm_client.stream(messages):
+            yield chunk
