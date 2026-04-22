@@ -64,8 +64,8 @@ class OllamaLLMClient(BaseLLMClient):
             self._llm = ChatOllama(
                 model=self.model_name,
                 temperature=self.temperature,
-                num_ctx=16384,      # context lớn để hỗ trợ history dài
-                num_predict=-1,
+                num_ctx=4096,       # Giảm context window cho tốc độ Prefill nhanh hơn
+                num_predict=512,    # Giới hạn output tối đa 512 tokens (~400 từ TV)
             )
         return self._llm
 
