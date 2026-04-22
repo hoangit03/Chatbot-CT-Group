@@ -109,11 +109,9 @@ class RetrievalService:
                     doc.metadata["rerank_score"] = float(score)
                 print(f"  🧹 [Filter] Lọc: {len(positive_docs)} docs có score > 0 / {len(scored_docs)} tổng")
             else:
-                # Fallback: nếu tất cả đều âm, lấy top 2 ít âm nhất
-                final_docs = [doc for doc, _ in scored_docs[:2]]
-                for doc, score in scored_docs[:2]:
-                    doc.metadata["rerank_score"] = float(score)
-                print(f"  ⚠️  [Filter] Tất cả score âm! Fallback lấy top 2 ít âm nhất.")
+                # KHÔNG nhồi docs rác → trả rỗng để Generation dùng prompt SIMPLE
+                final_docs = []
+                print(f"  🚫 [Filter] Tất cả {len(scored_docs)} docs score âm → Trả rỗng (chống Hallucination)")
             reranked = True
         else:
             final_docs = docs[:self.top_k]

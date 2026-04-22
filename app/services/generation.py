@@ -386,7 +386,8 @@ class GenerationService:
         elif not retrieval_result.documents:
             prompt_type = PromptType.SIMPLE
             prompt_vars = {"question": question, "chat_history": chat_history}
-            logger.info("[Generation] Intent: SIMPLE")
+            print(f"  🚫 [Intent] SIMPLE — Không có tài liệu liên quan → Chống Hallucination")
+            logger.info("[Generation] Intent: SIMPLE (no docs → anti-hallucination)")
 
         else:
             context = _build_safe_context(retrieval_result.documents)
@@ -450,6 +451,7 @@ class GenerationService:
         elif not retrieval_result.documents:
             prompt_type = PromptType.SIMPLE
             prompt_vars = {"question": question, "chat_history": chat_history}
+            print(f"  🚫 [Stream Intent] SIMPLE — Không có tài liệu → Chống Hallucination")
         else:
             context = _build_safe_context(retrieval_result.documents)
             prompt_type = PromptType.RAG
