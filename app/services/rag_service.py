@@ -52,3 +52,35 @@ class RAGService:
             ],
             "retrieved_count": len(retrieval_result.documents)
         }
+
+    def stream_answer(self, query: str, chat_history: List[BaseMessage] = None):
+        """Generator: Retrieval bình thường, sau đó Stream LLM output từng chunk."""
+        chat_history = chat_history or []
+
+        t_total = time.time()
+
+        # Bước 1: Retrieval (chạy blocking vì cần xong trước khi stream LLM)
+        t0 = time.time()
+        retrieval_result = self.retrieval.retrieve(query=query)
+        t_retrieval = time.time() - t0
+        print(f"  ⏱️  [Stream] Retrieval xong trong {t_retrieval:.2f}s")
+
+        # Bước 2: Stream LLM Generation
+        t1 = time.time()
+        total_chars = 0
+        for chunk in self.generation.stream_generate(retrieval_result, chat_history):
+            total_chars += len(chunk)
+            yield chunk
+
+        t_generation = time.time() - t1
+        t_pipeline = time.time() - t_total
+
+        # Debug Timing Report
+        print(f"\n{'='*60}")
+        print(f"  ⏱️  STREAMING PIPELINE TIMING REPORT")
+        print(f"{'='*60}")
+        print(f"  📥 Retrieval                        : {t_retrieval:.2f}s")
+        print(f"  🤖 LLM Stream Generation            : {t_generation:.2f}s ({total_chars} chars)")
+        print(f"  ──────────────────────────────────────────────")
+        print(f"  🏁 TỔNG PIPELINE                    : {t_pipeline:.2f}s")
+        print(f"{'='*60}\n")
