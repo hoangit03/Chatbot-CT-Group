@@ -38,13 +38,11 @@ class ChromaVectorStore(BaseVectorStore):
         self._max_concurrent = int(os.getenv("CHROMA_MAX_CONCURRENT", _CHROMA_WORKERS))
         self._sem: Optional[asyncio.Semaphore] = None
 
-    
     def _get_sem(self) -> asyncio.Semaphore:
         """Lazy-init semaphore trong running event loop."""
         if self._sem is None:
             self._sem = asyncio.Semaphore(self._max_concurrent)
         return self._sem
-
     # ====================== HELPER METHODS ======================
     def _get_or_create_vectorstore(self, embedding: Embeddings) -> Chroma:
         """Load DB đã tồn tại hoặc tạo mới"""
@@ -131,7 +129,8 @@ class ChromaVectorStore(BaseVectorStore):
     )-> List[Document]:
         vs = self._vectorstore
         if vs is None:
-            raise RuntimeError("VectorStore chưa được khởi tạo. Gọi get_retriever trước.")
+            from app.services.embedder import Embedder
+            self._get_or_create_vectorstore(Embedder().get_embedding_model())
  
         results = vs.similarity_search_by_vector(
             embedding=query_embedding,

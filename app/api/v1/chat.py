@@ -5,7 +5,7 @@ import json
 import time
 
 from langchain_core.messages import HumanMessage, AIMessage
-
+from fastapi.responses import StreamingResponse
 from app.models.chat import ChatRequest, ChatResponse, Message, Source
 from app.services.rag_service import RAGService
 from fastapi.responses import StreamingResponse
@@ -35,13 +35,11 @@ async def chat(request: ChatRequest):
     """
     try:
         history = _build_history(request.chat_history)
-
         # Gọi RAG Service
-        time_start = time.time()
         result = await asyncio.wait_for(
             rag_service.aanswer(query=request.query, chat_history=history),
             timeout=_REQUEST_TIMEOUT,
-        ) 
+        )
 
         # Tạo response custom
         response = ChatResponse(
@@ -50,23 +48,14 @@ async def chat(request: ChatRequest):
             answer=result["answer"],
             # sources=[Source(**s) for s in result["sources"]],
             # retrieved_count=result["retrieved_count"],
-            total_time=f"{time.time() - time_start:.6f}"
         )
 
         return response
-
     except asyncio.TimeoutError:
-        raise HTTPException(
-            status_code=504,
-            detail=f"Request timeout sau {_REQUEST_TIMEOUT}s. Vui lòng thử lại.",
-        )
-
+        raise HTTPException(status_code=504, detail=f"Timeout sau {_REQUEST_TIMEOUT}s")
     except Exception as e:
-        print(e)
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+        logger.error(f"[Chat] Error: {e}", exc_info=True)  # log full traceback
+        raise HTTPException(status_code=500, detail=str(e))
     
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):

@@ -3,7 +3,7 @@ from typing import List, Optional
 from dotenv import load_dotenv 
 
 from concurrent.futures import ThreadPoolExecutor
-
+from functools import lru_cache
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.embeddings import Embeddings
 from langchain_core.documents import Document
@@ -22,7 +22,6 @@ class Embedder(Embeddings):
     
     _instance: Optional["Embedder"] = None
     _embedding_model: Optional[Embeddings] = None
-
     _sem: Optional[asyncio.Semaphore] = None
 
     def __new__(cls):
@@ -70,19 +69,37 @@ class Embedder(Embeddings):
     
     def embed_query(self, text: str) -> List[float]:
         """Required by LangChain Embeddings interface"""
-        return self._embedding_model.embed_query(text)
+        return list(self._embed_query_cached(text))
     
+    @lru_cache(maxsize=512)
+    def _embed_query_cached(self, text: str) -> tuple:
+        """
+        lru_cache cần return type hashable → dùng tuple.
+        Cache 512 query gần nhất — đủ cho conversational RAG.
+        Query lặp lại (same session hoặc nhiều user hỏi cùng câu) = 0ms.
+        """
+        return tuple(self._embedding_model.embed_query(text))
+
     async def aembed_query(self, text: str) -> List[float]:
-        loop  = asyncio.get_running_loop()
+
+        # Cache lookup là O(1), không cần offload
+        cache_info = self._embed_query_cached.cache_info()
+        cached = self._embed_query_cached.__wrapped__ if hasattr(
+            self._embed_query_cached, '__wrapped__'
+        ) else None
+
+
+        loop = asyncio.get_running_loop()
         async with self._get_semaphore():
-            return await loop.run_in_executor(
+            result = await loop.run_in_executor(
                 _embed_executor,
-                self._embedding_model.embed_query,
+                self.embed_query,  # embed_query đã có cache bên trong
                 text,
             )
+        return result
         
-    async def aembed_documents(self, document: List[Document]) -> List[List[float]]:
-        texts = [doc.page_content for doc in document]
+    async def aembed_documents(self, documents: List[Document]) -> List[List[float]]:
+        texts = [doc.page_content for doc in documents]
         loop  = asyncio.get_running_loop()
         async with self._get_semaphore():
             return await loop.run_in_executor(
