@@ -7,10 +7,21 @@ from app.core.exception.llm_exception import LLMException
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from app.services.llm.base import BaseLLMClient
+import asyncio
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+_MAX_CONCURRENT_LLM = int(os.getenv("LLM_MAX_CONCURRENT", 2))
+_llm_semaphore: Optional[asyncio.Semaphore] = None
+
+def _get_semaphore() -> asyncio.Semaphore:
+    """Lazy-init trong running event loop — an toàn với uvicorn reload."""
+    global _llm_semaphore
+    if _llm_semaphore is None:
+        _llm_semaphore = asyncio.Semaphore(_MAX_CONCURRENT_LLM)
+    return _llm_semaphore
 
 class OllamaLLMClient(BaseLLMClient):
     """Ollama client với auto-pull model + logging + exception rõ ràng"""
@@ -69,6 +80,7 @@ class OllamaLLMClient(BaseLLMClient):
             )
         return self._llm
 
+
     def invoke(self, messages: List[BaseMessage]) -> str:
         try:
             llm = self.get_llm()
@@ -76,5 +88,16 @@ class OllamaLLMClient(BaseLLMClient):
             response = llm.invoke(messages)
             logger.info(f"[LLM] Nhận được response ({len(response.content)} ký tự)")
             return response.content
+        except LLMException:
+            raise
         except Exception as e:
             raise LLMException("Lỗi khi gọi Ollama", self.model_name, e)
+        
+    async def ainvoke(self, messages: List[BaseMessage]) -> str:
+         sem = _get_semaphore()
+         async with sem:
+            logger.debug(
+                f"[LLM] async invoke | {len(messages)} messages | "
+                f"semaphore={sem._value}/{_MAX_CONCURRENT_LLM}"  # type: ignore[attr-defined]
+            )
+            return await asyncio.to_thread(self.invoke, messages)

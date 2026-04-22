@@ -22,3 +22,25 @@ class BaseVectorStore(ABC):
     def delete_collection(self) -> None:
         """Xóa toàn bộ collection (dùng khi re-ingest)"""
         pass
+
+    @abstractmethod
+    async def asimilarity_search(
+        self,
+        query_embedding: List[float],
+        k: int = 6,
+        metadata_filter: Optional[dict] = None,
+    ) -> List[Document]:
+        """
+        Nhận vector đã embed sẵn, tìm kiếm trong store.
+        Tách embedding ra ngoài để embed-pool và store-pool không tranh chấp.
+        """
+        pass
+ 
+    @abstractmethod
+    async def aadd_documents(
+        self,
+        documents: List[Document],
+        embedding: Embeddings,
+        replace: bool = True,
+    ) -> None:
+        pass

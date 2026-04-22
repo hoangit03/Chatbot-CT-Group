@@ -9,6 +9,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from app.utils.prompts import PromptRegistry, PromptType
 from app.services.llm.ollama import BaseLLMClient, OllamaLLMClient
 from app.services.retrieval import RetrievalResult
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -349,45 +350,25 @@ class GenerationService:
         self.llm_client = llm_client or OllamaLLMClient()
         logger.info("GenerationService (hardened v2) initialized")
 
-    def generate(
-        self,
-        retrieval_result: RetrievalResult,
-        chat_history: List[BaseMessage] = None,
-    ) -> str:
-
-        # 1a — Normalize
+    def _build_prompt(self, retrieval_result: RetrievalResult, chat_history: List[BaseMessage]):
+        """Tách logic build prompt để dùng chung cho sync và async."""
         question = _decode_and_normalize(retrieval_result.query)
         original_lang = _detect_language(question)
-
-        # 1b — Strip injection prefix, giữ câu hỏi thật
         question, had_injection_prefix = _extract_real_question(question)
-        if had_injection_prefix:
-            logger.warning(f"[Security] Mixed injection stripped. Kept: '{question[:80]}'")
-
-        # 1d — Audit history
         chat_history = _audit_chat_history(chat_history or [])
-
-        # 1c — Intent detection (if/elif — chỉ một nhánh chạy)
+ 
         if _is_invalid_query(question):
             prompt_type = PromptType.INVALID_QUERY
             prompt_vars = {"question": question}
-            logger.info("[Generation] Intent: INVALID_QUERY")
-
         elif _is_jailbreak(question):
             prompt_type = PromptType.INVALID_QUERY
             prompt_vars = {"question": "Câu hỏi không hợp lệ"}
-            logger.warning(f"[Security] Pure jailbreak blocked: {question[:100]}")
-
         elif _is_chitchat(question):
             prompt_type = PromptType.CHITCHAT
             prompt_vars = {"question": question, "chat_history": chat_history}
-            logger.info("[Generation] Intent: CHITCHAT")
-
         elif not retrieval_result.documents:
             prompt_type = PromptType.SIMPLE
             prompt_vars = {"question": question, "chat_history": chat_history}
-            logger.info("[Generation] Intent: SIMPLE")
-
         else:
             context = _build_safe_context(retrieval_result.documents)
             prompt_type = PromptType.RAG
@@ -396,12 +377,29 @@ class GenerationService:
                 "context": context,
                 "chat_history": chat_history,
             }
-            logger.info(f"[Generation] Intent: RAG | Docs: {len(retrieval_result.documents)}")
-
-        # 2 — Generate
+ 
         prompt = PromptRegistry.get(prompt_type)
         messages = prompt.invoke(prompt_vars).messages
+        return messages, original_lang
+
+    def generate(
+        self,
+        retrieval_result: RetrievalResult,
+        chat_history: List[BaseMessage] = None,
+    ) -> str:
+
+        messages, original_lang = self._build_prompt(retrieval_result, chat_history)
         raw_answer = self.llm_client.invoke(messages)
 
         # 3 — Validate output
         return _validate_output(raw_answer, original_lang)
+    
+    async def agenerate(
+        self,
+        retrieval_result: RetrievalResult,
+        chat_history: List[BaseMessage] = None,
+    ) -> str:
+        messages, original_lang = self._build_prompt(retrieval_result, chat_history)
+        raw_answer = await self.llm_client.ainvoke(messages)
+        return _validate_output(raw_answer, original_lang)
+    

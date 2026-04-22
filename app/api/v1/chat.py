@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from typing import List
+import asyncio
 
 from langchain_core.messages import HumanMessage, AIMessage
 
@@ -10,6 +11,7 @@ router = APIRouter(prefix="/api/v1", tags=["Chatbot"])
 
 rag_service = RAGService()
 
+_REQUEST_TIMEOUT = float(60)
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -26,9 +28,9 @@ async def chat(request: ChatRequest):
                     history.append(AIMessage(content=msg.content))
 
         # Gọi RAG Service
-        result = rag_service.answer(
-            query=request.query,
-            chat_history=history
+        result = await asyncio.wait_for(
+            rag_service.aanswer(query=request.query, chat_history=history),
+            timeout=_REQUEST_TIMEOUT,
         )
 
         # Tạo response custom
@@ -41,6 +43,12 @@ async def chat(request: ChatRequest):
         )
 
         return response
+
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Request timeout sau {_REQUEST_TIMEOUT}s. Vui lòng thử lại.",
+        )
 
     except Exception as e:
         raise HTTPException(
