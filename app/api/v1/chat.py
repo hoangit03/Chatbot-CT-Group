@@ -51,6 +51,7 @@ async def chat(request: ChatRequest):
         )
 
     except Exception as e:
+        print(e)
         raise HTTPException(
             status_code=500,
             detail=str(e)
