@@ -1,0 +1,40 @@
+# ============================================================
+# Dockerfile — CT-Group Chatbot API (Bot Tier)
+# Port: 8000 | Requires: NVIDIA GPU (CUDA 12.x)
+# ============================================================
+
+FROM nvidia/cuda:12.6.0-runtime-ubuntu22.04
+
+# --- System dependencies ---
+RUN apt-get update && apt-get install -y \
+    python3.11 python3.11-venv python3-pip \
+    curl git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# --- Python dependencies ---
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# --- Copy application source ---
+COPY app/ ./app/
+COPY .env .env
+
+# --- Pre-download embedding & reranker models at build time ---
+# Prevents cold-start delay on first request
+ARG EMBED_DEVICE=cuda
+ARG EMBEDDING_MODEL_GPU=intfloat/multilingual-e5-large
+ARG RERANKER_MODEL=Qwen/Qwen3-Reranker-0.6B
+RUN python3 -c "\
+from sentence_transformers import SentenceTransformer; \
+SentenceTransformer('${EMBEDDING_MODEL_GPU}'); \
+print('Embedding model cached.')" || true
+
+# --- Health check ---
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.api_bot:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

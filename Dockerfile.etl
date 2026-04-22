@@ -1,0 +1,45 @@
+# ============================================================
+# Dockerfile — CT-Group ETL Pipeline (Data Ingestion Tier)
+# Port: 8001 (API) | Requires: NVIDIA GPU (CUDA 12.x)
+# Depends on: RabbitMQ, ChromaDB, PaddleOCR (external)
+# ============================================================
+
+FROM nvidia/cuda:12.6.0-runtime-ubuntu22.04
+
+# --- System dependencies ---
+RUN apt-get update && apt-get install -y \
+    python3.11 python3.11-venv python3-pip \
+    libgl1 libglib2.0-0 \
+    curl git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# --- Python dependencies ---
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# --- Copy application source ---
+COPY app/ ./app/
+COPY pipeline/ ./pipeline/
+COPY .env .env
+
+# --- Shared data directories ---
+RUN mkdir -p /app/shared_data/data_input /app/shared_data/data_output
+
+# --- Health check (ETL API) ---
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8001/api/v1/health || exit 1
+
+EXPOSE 8001
+
+# Entrypoint: start ETL API + all workers concurrently
+CMD ["sh", "-c", "\
+  uvicorn app.api_etl:app --host 0.0.0.0 --port 8001 & \
+  python -m pipeline.workers.ocr_worker & \
+  python -m pipeline.workers.to_md_worker & \
+  python -m pipeline.workers.cleaning_worker & \
+  python -m pipeline.workers.chunking_worker & \
+  python -m pipeline.workers.embedding_worker & \
+  wait \
+"]

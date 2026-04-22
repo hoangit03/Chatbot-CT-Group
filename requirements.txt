@@ -32,3 +32,8 @@ pika
 mammoth
 markdownify
 tabulate
+ragas
+datasets
+pandas
+langchain-permit
+rank_bm2c5
