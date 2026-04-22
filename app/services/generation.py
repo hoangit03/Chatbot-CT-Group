@@ -401,6 +401,21 @@ class GenerationService:
         # 2 — Generate
         prompt = PromptRegistry.get(prompt_type)
         messages = prompt.invoke(prompt_vars).messages
+
+        # ── DEBUG: In Prompt gửi vào LLM ──
+        print(f"\n  {'─'*70}")
+        print(f"  📨 PROMPT GỬI VÀO LLM ({len(messages)} messages):")
+        print(f"  {'─'*70}")
+        for i, msg in enumerate(messages):
+            role = msg.__class__.__name__.replace("Message", "")
+            content = getattr(msg, 'content', '')
+            content_len = len(content) if isinstance(content, str) else 0
+            snippet = content[:200].replace('\n', '↵ ') if isinstance(content, str) else str(content)[:200]
+            print(f"  [{i+1}] 🏷️  Role: {role} | {content_len} ký tự")
+            print(f"      📝 \"{snippet}...\"")
+            print()
+        print(f"  {'─'*70}")
+
         raw_answer = self.llm_client.invoke(messages)
 
         # 3 — Validate output
@@ -448,5 +463,20 @@ class GenerationService:
         # 2 — Stream Generate
         prompt = PromptRegistry.get(prompt_type)
         messages = prompt.invoke(prompt_vars).messages
+
+        # ── DEBUG: In Prompt gửi vào LLM (Stream) ──
+        print(f"\n  {'─'*70}")
+        print(f"  📨 PROMPT GỬI VÀO LLM - STREAM ({len(messages)} messages):")
+        print(f"  {'─'*70}")
+        for i, msg in enumerate(messages):
+            role = msg.__class__.__name__.replace("Message", "")
+            content = getattr(msg, 'content', '')
+            content_len = len(content) if isinstance(content, str) else 0
+            snippet = content[:200].replace('\n', '↵ ') if isinstance(content, str) else str(content)[:200]
+            print(f"  [{i+1}] 🏷️  Role: {role} | {content_len} ký tự")
+            print(f"      📝 \"{snippet}...\"")
+            print()
+        print(f"  {'─'*70}")
+
         for chunk in self.llm_client.stream(messages):
             yield chunk

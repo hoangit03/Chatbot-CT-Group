@@ -59,6 +59,20 @@ class RetrievalService:
         t_search_done = time.time() - t_search
         print(f"  ⏱️  [Vector Search] {len(docs)} docs trong {t_search_done:.2f}s")
 
+        # ── DEBUG: Hiển thị dữ liệu trích xuất từ VectorDB ──
+        if docs:
+            print(f"\n  {'─'*70}")
+            print(f"  📚 DỮ LIỆU TRÍCH XUẤT TỪ VECTORDB ({len(docs)} chunks):")
+            print(f"  {'─'*70}")
+            for i, doc in enumerate(docs):
+                source = doc.metadata.get("source_file") or doc.metadata.get("source") or doc.metadata.get("file_name") or "N/A"
+                chunk_id = doc.metadata.get("chunk_id", "?")
+                snippet = doc.page_content[:150].replace('\n', ' ')
+                print(f"  [{i+1}] 📄 Nguồn: {source}")
+                print(f"      🏷️  Chunk ID: {chunk_id}")
+                print(f"      📝 Nội dung: \"{snippet}...\"")
+                print()
+
         if score_threshold > 0.0:
             docs = [
                 doc for doc in docs
@@ -72,6 +86,19 @@ class RetrievalService:
             scored_docs: List[Tuple[Document, float]] = self.reranker.rerank(query, docs)
             t_rerank_done = time.time() - t_rerank
             print(f"  ⏱️  [Rerank] Hoàn tất trong {t_rerank_done:.2f}s")
+
+            # ── DEBUG: Bảng xếp hạng Reranker ──
+            print(f"\n  {'─'*70}")
+            print(f"  🏆 BẢNG XẾP HẠNG SAU RERANK (Top {self.top_k} được chọn):")
+            print(f"  {'─'*70}")
+            print(f"  {'Hạng':<6} {'Score':<12} {'Nguồn':<40} {'Nội dung (50 ký tự)'}")
+            print(f"  {'─'*70}")
+            for rank, (doc, score) in enumerate(scored_docs):
+                source = doc.metadata.get("source_file") or doc.metadata.get("source") or doc.metadata.get("file_name") or "N/A"
+                snippet = doc.page_content[:50].replace('\n', ' ')
+                marker = "✅" if rank < self.top_k else "  "
+                print(f"  {marker} #{rank+1:<4} {score:<12.4f} {source:<40} \"{snippet}...\"")
+            print(f"  {'─'*70}\n")
 
             # Lấy lại top_k sau rerank
             final_docs = [doc for doc, _ in scored_docs[:self.top_k]]
