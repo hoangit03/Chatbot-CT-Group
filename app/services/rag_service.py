@@ -131,7 +131,7 @@ Viết lại thành câu hỏi độc lập:"""
         if skip_reason:
             print(f"\n  ⚡ [Pre-RAG] Bypass RAG → Lý do: {skip_reason} | Query: \"{query}\"")
             # Tạo RetrievalResult rỗng, Generation sẽ dùng CHITCHAT/SIMPLE prompt
-            retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, reranked=False)
+            retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, total_retrieved=0, reranked=False)
         else:
             # ── Bước 0: Query Rewriting (nếu có chat_history) ──
             t_rw = time.time()
@@ -200,7 +200,7 @@ Viết lại thành câu hỏi độc lập:"""
 
         if skip_reason:
             print(f"\n  ⚡ [Pre-RAG] Bypass RAG → Lý do: {skip_reason} | Query: \"{query}\"")
-            retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, reranked=False)
+            retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, total_retrieved=0, reranked=False)
         else:
             # Bước 0: Query Rewriting
             t_rw = time.time()
