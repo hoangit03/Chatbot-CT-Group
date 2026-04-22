@@ -127,11 +127,10 @@ class ChromaVectorStore(BaseVectorStore):
         k: int,
         metadata_filter: Optional[dict],      
     )-> List[Document]:
-        vs = self._vectorstore
-        if vs is None:
+        if self._vectorstore is None:
             from app.services.embedder import Embedder
             self._get_or_create_vectorstore(Embedder().get_embedding_model())
- 
+        vs = self._vectorstore
         results = vs.similarity_search_by_vector(
             embedding=query_embedding,
             k=k,
