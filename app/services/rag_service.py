@@ -1,8 +1,9 @@
+import re
 import time
 from typing import List, Dict, Any
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 
-from app.services.retrieval import RetrievalService
+from app.services.retrieval import RetrievalService, RetrievalResult
 from app.services.generation import GenerationService
 
 # ── Prompt cho Query Rewriting (cực ngắn để giảm latency) ──
@@ -13,9 +14,105 @@ Quy tắc:
 - Giữ nguyên ý nghĩa gốc, chỉ bổ sung ngữ cảnh từ lịch sử
 - Nếu câu hỏi đã rõ ràng (không phụ thuộc ngữ cảnh) → trả về nguyên văn"""
 
+# ── Pre-RAG Intent Classification ──
+# Những câu này bypass hoàn toàn VectorDB + Reranker + Query Rewrite
+_CHITCHAT_RE = re.compile(
+    r"""
+    ^(\s*(
+        xin\s*chào | chào\s*(buổi)?\s*(sáng|trưa|chiều|tối|anh|chị|bạn|em|mn|mọi\s*người)?
+        | hé\s*l[oô] | hell+o+ | hi+\s*$| hey+ | howdy | good\s*(morning|afternoon|evening|night)
+        | alo+ | ơi | ê\s*$
+        | bạn\s*(là\s*(ai|gì)|làm\s*(được\s*)?gì|có\s*thể\s*giúp|giúp\s*được\s*gì|có\s*khỏe|khỏe\s*không|khỏe\s*hong)
+        | chatbot\s*(này\s*)?(là\s*gì|dùng\s*để|làm\s*gì)
+        | (em|bạn)\s*(là\s*ai|là\s*gì|tên\s*gì|ơi)
+        | introduce\s*yourself | who\s*are\s*you | what\s*can\s*you\s*do
+        | (cảm?\s*ơn|thanks?|thank\s*you|tks|ty|camon|cam\s*on)(.{0,40})?
+        | bạn\s*giỏi\s*(quá|thật|vậy) | (hay|tốt|được)\s*(lắm|quá|đấy|vậy)
+        | (tạm\s*biệt|bye+|goodbye|gặp\s*lại|hẹn\s*gặp|see\s*you)(.{0,40})?
+        | mấy\s*giờ\s*(rồi)? | bây\s*giờ\s*là\s*mấy\s*giờ | what\s*time
+        | hôm\s*nay\s*(là\s*)?(ngày|thứ)\s*mấy | today\s*is
+        | (tôi|mình)\s*cần\s*(bạn\s*)?(giúp|hỗ\s*trợ)\s*(tôi\s*)?
+        | giúp\s*(tôi|mình)\s*(với|đi|nha|nhé)?
+    )\s*)$
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Regex cho invalid/gibberish đơn giản  
+_INVALID_SHORT_RE = re.compile(
+    r"^(\s*([a-z]{1,4}|\d{1,6}|[^\w\s]{2,}|string|test|asdf|qwer|zxcv|\.{2,}|\?{2,}|ok|okay|fine|no|yes)\s*)$",
+    re.IGNORECASE,
+)
+
+
+def _is_gibberish(text: str) -> bool:
+    """Phát hiện input vô nghĩa: ký tự lặp, spam, không có từ thật."""
+    q = text.strip().lower()
+    
+    # Quá ngắn (< 3 ký tự)
+    if len(q) < 3:
+        return True
+    
+    # Invalid patterns cơ bản (test, asdf, ok, ...)
+    if _INVALID_SHORT_RE.match(q):
+        return True
+    
+    # Chuỗi ngắn ≤ 5 ký tự mà không phải pattern đã biết → gibberish
+    # (từ tiếng Việt có nghĩa thường đi kèm dấu hoặc ngữ cảnh dài hơn)
+    if len(q) <= 5 and not _CHITCHAT_RE.match(q):
+        return True
+    
+    no_space = q.replace(" ", "")
+    
+    # Quá ít ký tự unique (vd: "gugugu", "aaaaa")
+    unique_ratio = len(set(no_space)) / max(len(no_space), 1)
+    if len(no_space) > 4 and unique_ratio < 0.4:
+        return True
+    
+    # Bất kỳ "từ" nào dài > 12 ký tự → rất khó là TV/mã nội bộ hợp lệ
+    # (TV max ~7 ký tự, mã nội bộ ~10: "BNLCĐ-QĐ201")
+    words = q.split()
+    if any(len(w) > 12 for w in words):
+        return True
+    
+    # 4+ phụ âm liên tiếp → không tồn tại trong tiếng Việt
+    vietnamese_vowels = set("aeiouyàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ")
+    consonant_streak = 0
+    for c in no_space:
+        if c.isalpha() and c not in vietnamese_vowels:
+            consonant_streak += 1
+            if consonant_streak >= 4:
+                return True
+        else:
+            consonant_streak = 0
+    
+    # Không chứa nguyên âm nào → vô nghĩa
+    if not any(c in vietnamese_vowels for c in q) and len(q) > 3:
+        return True
+    
+    return False
+
+
+def _is_skip_rag(query: str) -> str:
+    """
+    Phân loại TRƯỚC khi vào RAG pipeline.
+    
+    Returns:
+        "chitchat" | "gibberish" | None
+        - chitchat: chào hỏi, cảm ơn, câu off-topic → bypass RAG
+        - gibberish: input vô nghĩa, spam → bypass RAG
+        - None: câu hỏi thật → chạy full RAG pipeline
+    """
+    q = query.strip()
+    if _is_gibberish(q):
+        return "gibberish"
+    if _CHITCHAT_RE.match(q):
+        return "chitchat"
+    return None
+
 
 class RAGService:
-    """RAG Service hoàn chỉnh với multi-turn conversation + Query Rewriting"""
+    """RAG Service: Pre-RAG Intent Classification + Query Rewriting + RAG Pipeline"""
 
     def __init__(self):
         self.retrieval = RetrievalService()
@@ -68,26 +165,36 @@ Viết lại thành câu hỏi độc lập:"""
         chat_history = chat_history or []
 
         t_total = time.time()
+        t_rewrite = 0.0
+        t_retrieval = 0.0
 
-        # ── Bước 0: Query Rewriting (nếu có chat_history) ──
-        t_rw = time.time()
-        search_query = self._rewrite_query(query, chat_history)
-        t_rewrite = time.time() - t_rw
+        # ── Bước -1: Pre-RAG Intent Classification ──
+        skip_reason = _is_skip_rag(query)
 
-        if search_query != query:
-            print(f"\n  ✏️  [Query Rewrite] {t_rewrite:.2f}s")
-            print(f"      Gốc     : \"{query}\"")
-            print(f"      Viết lại: \"{search_query}\"")
+        if skip_reason:
+            print(f"\n  ⚡ [Pre-RAG] Bypass RAG → Lý do: {skip_reason} | Query: \"{query}\"")
+            # Tạo RetrievalResult rỗng, Generation sẽ dùng CHITCHAT/SIMPLE prompt
+            retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, total_retrieved=0, reranked=False)
         else:
-            print(f"\n  ✏️  [Query Rewrite] Không cần viết lại (query đã rõ ràng)")
+            # ── Bước 0: Query Rewriting (nếu có chat_history) ──
+            t_rw = time.time()
+            search_query = self._rewrite_query(query, chat_history)
+            t_rewrite = time.time() - t_rw
 
-        # ── Bước 1: Retrieval (dùng search_query đã rewrite) ──
-        t0 = time.time()
-        retrieval_result = self.retrieval.retrieve(query=search_query)
-        t_retrieval = time.time() - t0
+            if search_query != query:
+                print(f"\n  ✏️  [Query Rewrite] {t_rewrite:.2f}s")
+                print(f"      Gốc     : \"{query}\"")
+                print(f"      Viết lại: \"{search_query}\"")
+            else:
+                print(f"\n  ✏️  [Query Rewrite] Không cần viết lại (query đã rõ ràng)")
 
-        # Ghi đè query gốc lại để Generation nhận đúng câu hỏi người dùng
-        retrieval_result.query = query
+            # ── Bước 1: Retrieval (dùng search_query đã rewrite) ──
+            t0 = time.time()
+            retrieval_result = self.retrieval.retrieve(query=search_query)
+            t_retrieval = time.time() - t0
+
+            # Ghi đè query gốc lại để Generation nhận đúng câu hỏi người dùng
+            retrieval_result.query = query
 
         # ── Bước 2: Generation (LLM Inference) ──
         t1 = time.time()
@@ -100,8 +207,11 @@ Viết lại thành câu hỏi độc lập:"""
         print(f"\n{'='*60}")
         print(f"  ⏱️  PIPELINE TIMING REPORT")
         print(f"{'='*60}")
-        print(f"  ✏️  Query Rewrite                    : {t_rewrite:.2f}s")
-        print(f"  📥 Retrieval (Embed+Search+Rerank) : {t_retrieval:.2f}s")
+        if skip_reason:
+            print(f"  ⚡ Pre-RAG Bypass                    : {skip_reason}")
+        else:
+            print(f"  ✏️  Query Rewrite                    : {t_rewrite:.2f}s")
+            print(f"  📥 Retrieval (Embed+Search+Rerank) : {t_retrieval:.2f}s")
         print(f"  🤖 LLM Generation                  : {t_generation:.2f}s")
         print(f"  ──────────────────────────────────────────────")
         print(f"  🏁 TỔNG PIPELINE                    : {t_pipeline:.2f}s")
@@ -124,31 +234,40 @@ Viết lại thành câu hỏi độc lập:"""
         }
 
     def stream_answer(self, query: str, chat_history: List[BaseMessage] = None):
-        """Generator: Query Rewriting → Retrieval → Stream LLM output."""
+        """Generator: Pre-RAG Classification → Query Rewriting → Retrieval → Stream LLM."""
         chat_history = chat_history or []
 
         t_total = time.time()
+        t_rewrite = 0.0
+        t_retrieval = 0.0
 
-        # Bước 0: Query Rewriting
-        t_rw = time.time()
-        search_query = self._rewrite_query(query, chat_history)
-        t_rewrite = time.time() - t_rw
+        # ── Bước -1: Pre-RAG Intent Classification ──
+        skip_reason = _is_skip_rag(query)
 
-        if search_query != query:
-            print(f"\n  ✏️  [Query Rewrite] {t_rewrite:.2f}s")
-            print(f"      Gốc     : \"{query}\"")
-            print(f"      Viết lại: \"{search_query}\"")
+        if skip_reason:
+            print(f"\n  ⚡ [Pre-RAG] Bypass RAG → Lý do: {skip_reason} | Query: \"{query}\"")
+            retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, total_retrieved=0, reranked=False)
         else:
-            print(f"\n  ✏️  [Query Rewrite] Không cần viết lại")
+            # Bước 0: Query Rewriting
+            t_rw = time.time()
+            search_query = self._rewrite_query(query, chat_history)
+            t_rewrite = time.time() - t_rw
 
-        # Bước 1: Retrieval (dùng search_query đã rewrite)
-        t0 = time.time()
-        retrieval_result = self.retrieval.retrieve(query=search_query)
-        t_retrieval = time.time() - t0
-        print(f"  ⏱️  [Stream] Retrieval xong trong {t_retrieval:.2f}s")
+            if search_query != query:
+                print(f"\n  ✏️  [Query Rewrite] {t_rewrite:.2f}s")
+                print(f"      Gốc     : \"{query}\"")
+                print(f"      Viết lại: \"{search_query}\"")
+            else:
+                print(f"\n  ✏️  [Query Rewrite] Không cần viết lại")
 
-        # Ghi đè query gốc lại cho Generation
-        retrieval_result.query = query
+            # Bước 1: Retrieval (dùng search_query đã rewrite)
+            t0 = time.time()
+            retrieval_result = self.retrieval.retrieve(query=search_query)
+            t_retrieval = time.time() - t0
+            print(f"  ⏱️  [Stream] Retrieval xong trong {t_retrieval:.2f}s")
+
+            # Ghi đè query gốc lại cho Generation
+            retrieval_result.query = query
 
         # Bước 2: Stream LLM Generation
         t1 = time.time()
@@ -164,8 +283,11 @@ Viết lại thành câu hỏi độc lập:"""
         print(f"\n{'='*60}")
         print(f"  ⏱️  STREAMING PIPELINE TIMING REPORT")
         print(f"{'='*60}")
-        print(f"  ✏️  Query Rewrite                    : {t_rewrite:.2f}s")
-        print(f"  📥 Retrieval                        : {t_retrieval:.2f}s")
+        if skip_reason:
+            print(f"  ⚡ Pre-RAG Bypass                    : {skip_reason}")
+        else:
+            print(f"  ✏️  Query Rewrite                    : {t_rewrite:.2f}s")
+            print(f"  📥 Retrieval                        : {t_retrieval:.2f}s")
         print(f"  🤖 LLM Stream Generation            : {t_generation:.2f}s ({total_chars} chars)")
         print(f"  ──────────────────────────────────────────────")
         print(f"  🏁 TỔNG PIPELINE                    : {t_pipeline:.2f}s")
