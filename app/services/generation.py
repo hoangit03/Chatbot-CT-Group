@@ -82,7 +82,14 @@ def _sanitize_metadata(value: str, max_length: int = 200) -> str:
 def _build_safe_context(documents) -> str:
     safe_parts = []
     for i, doc in enumerate(documents):
-        file_name = _sanitize_metadata(doc.metadata.get('file_name', 'Không rõ nguồn'))
+        # Lấy tên nguồn đúng: thử nhiều key vì metadata không đồng nhất
+        raw_source = (
+            doc.metadata.get('source_file')
+            or doc.metadata.get('source')
+            or doc.metadata.get('file_name')
+            or 'Không rõ nguồn'
+        )
+        file_name = _sanitize_metadata(raw_source)
         content = _sanitize_document_content(doc.page_content, file_name)
         safe_parts.append(
             f"===BEGIN_DOC id={i+1} source=\"{file_name}\"===\n"
