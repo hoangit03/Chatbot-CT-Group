@@ -12,7 +12,7 @@ rag_service = RAGService()
 
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+def chat(request: ChatRequest):
     """
     API Chatbot RAG - Hỗ trợ multi-turn conversation
     """
