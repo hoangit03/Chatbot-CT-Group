@@ -79,17 +79,20 @@ def _sanitize_metadata(value: str, max_length: int = 200) -> str:
     return value[:max_length]
 
 
+def _get_source_name(doc) -> str:
+    """Lấy tên file nguồn từ metadata (thử nhiều key)."""
+    return (
+        doc.metadata.get('source_file')
+        or doc.metadata.get('source')
+        or doc.metadata.get('file_name')
+        or 'Không rõ nguồn'
+    )
+
+
 def _build_safe_context(documents) -> str:
     safe_parts = []
     for i, doc in enumerate(documents):
-        # Lấy tên nguồn đúng: thử nhiều key vì metadata không đồng nhất
-        raw_source = (
-            doc.metadata.get('source_file')
-            or doc.metadata.get('source')
-            or doc.metadata.get('file_name')
-            or 'Không rõ nguồn'
-        )
-        file_name = _sanitize_metadata(raw_source)
+        file_name = _sanitize_metadata(_get_source_name(doc))
         content = _sanitize_document_content(doc.page_content, file_name)
         safe_parts.append(
             f"===BEGIN_DOC id={i+1} source=\"{file_name}\"===\n"
@@ -97,6 +100,24 @@ def _build_safe_context(documents) -> str:
             f"===END_DOC id={i+1}==="
         )
     return "\n\n".join(safe_parts)
+
+
+def _build_source_citation(documents) -> str:
+    """Tạo phần nguồn tham khảo từ metadata (KHÔNG phụ thuộc LLM)."""
+    if not documents:
+        return ""
+    # Lấy danh sách unique source names
+    sources = []
+    seen = set()
+    for doc in documents:
+        name = _get_source_name(doc)
+        if name not in seen and name != 'Không rõ nguồn':
+            seen.add(name)
+            sources.append(name)
+    if not sources:
+        return ""
+    source_lines = "\n".join(f"- {s}" for s in sources)
+    return f"\n\n**Nguồn tham khảo:**\n{source_lines}"
 
 
 # =============================================================================
@@ -427,7 +448,13 @@ class GenerationService:
         raw_answer = self.llm_client.invoke(messages)
 
         # 3 — Validate output
-        return _validate_output(raw_answer, original_lang)
+        validated = _validate_output(raw_answer, original_lang)
+
+        # 4 — Gắn nguồn tham khảo bằng CODE (không phụ thuộc LLM)
+        if prompt_type == PromptType.RAG and retrieval_result.documents:
+            validated += _build_source_citation(retrieval_result.documents)
+
+        return validated
 
     def stream_generate(
         self,
@@ -489,3 +516,7 @@ class GenerationService:
 
         for chunk in self.llm_client.stream(messages):
             yield chunk
+
+        # Gắn nguồn tham khảo bằng CODE sau khi stream xong
+        if prompt_type == PromptType.RAG and retrieval_result.documents:
+            yield _build_source_citation(retrieval_result.documents)
