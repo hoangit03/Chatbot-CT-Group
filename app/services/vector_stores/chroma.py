@@ -38,6 +38,12 @@ class ChromaVectorStore(BaseVectorStore):
         self._max_concurrent = int(os.getenv("CHROMA_MAX_CONCURRENT", _CHROMA_WORKERS))
         self._sem: Optional[asyncio.Semaphore] = None
 
+
+    def _get_sem(self) -> asyncio.Semaphore:
+        """Lazy-init semaphore trong running event loop."""
+        if self._sem is None:
+            self._sem = asyncio.Semaphore(self._max_concurrent)
+        return self._sem
     # ====================== HELPER METHODS ======================
     def _get_or_create_vectorstore(self, embedding: Embeddings) -> Chroma:
         """Load DB đã tồn tại hoặc tạo mới"""
@@ -115,7 +121,8 @@ class ChromaVectorStore(BaseVectorStore):
     )-> List[Document]:
         vs = self._vectorstore
         if vs is None:
-            raise RuntimeError("VectorStore chưa được khởi tạo. Gọi get_retriever trước.")
+            from app.services.embedder import Embedder
+            self._get_or_create_vectorstore(Embedder().get_embedding_model())
  
         results = vs.similarity_search_by_vector(
             embedding=query_embedding,
@@ -162,7 +169,7 @@ class ChromaVectorStore(BaseVectorStore):
     ) -> None:
         """Bất đồng bộ — offload I/O-heavy ingest sang executor."""
         loop = asyncio.get_running_loop()
-        async with self._sem:
+        async with self._get_sem():
             await loop.run_in_executor(
                 _chroma_executor,
                 self._add_documents_sync,
@@ -184,7 +191,7 @@ class ChromaVectorStore(BaseVectorStore):
         để 2 tác vụ có thể dùng thread pool riêng biệt.
         """
         loop = asyncio.get_running_loop()
-        async with self._sem:
+        async with self._get_sem():
             return await loop.run_in_executor(
                 _chroma_executor,
                 self._similarity_search_sync,
@@ -199,7 +206,7 @@ class ChromaVectorStore(BaseVectorStore):
         Gọi một lần lúc startup, sau đó dùng asimilarity_search trực tiếp.
         """
         loop = asyncio.get_running_loop()
-        async with self._sem:
+        async with self._get_sem():
             return await loop.run_in_executor(
                 _chroma_executor,
                 self._get_retriever_sync,
