@@ -171,3 +171,14 @@ Viết lại thành câu hỏi độc lập:"""
         print(f"  🏁 TỔNG PIPELINE                    : {t_pipeline:.2f}s")
         print(f"{'='*60}\n")
 
+    async def aanswer(
+        self, query: str, chat_history: List[BaseMessage] = None
+    ) -> Dict[str, Any]:
+        """
+        """
+        chat_history = chat_history or []
+ 
+        retrieval_result = await self.retrieval.aretrieve(query=query)
+        answer = await self.generation.agenerate(retrieval_result, chat_history)
+ 
+        return self._build_response(query, answer, retrieval_result)
