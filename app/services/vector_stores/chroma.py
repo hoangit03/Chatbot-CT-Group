@@ -12,13 +12,13 @@ from langchain_core.embeddings import Embeddings
 
 from app.services.vector_stores.base import BaseVectorStore
 
+load_dotenv()
+
 _CHROMA_WORKERS = int(os.getenv("CHROMA_WORKERS", 4))
 _chroma_executor = ThreadPoolExecutor(
     max_workers=_CHROMA_WORKERS,
     thread_name_prefix="chroma-worker"
 )
-
-load_dotenv()
 
 class ChromaVectorStore(BaseVectorStore):
     """
@@ -26,16 +26,17 @@ class ChromaVectorStore(BaseVectorStore):
     """
 
     def __init__(self, persist_dir: str = None, collection_name: str = "internal_knowledge"):
-        self.persist_dir = persist_dir or  os.getenv("VECTOR_DB_DIR", "./vectorstore/chroma_db")
+        self.persist_dir = persist_dir or os.getenv(
+            "VECTOR_DB_DIR", "./vectorstore/chroma_db"
+        )
         self.collection_name = collection_name
-        
         Path(self.persist_dir).mkdir(parents=True, exist_ok=True)
-        
+ 
         self._vectorstore: Optional[Chroma] = None
         self._embedding: Optional[Embeddings] = None
-
-        max_concurrent = int(os.getenv("CHROMA_MAX_CONCURRENT", _CHROMA_WORKERS))
-        self._sem = asyncio.Semaphore(max_concurrent)
+ 
+        self._max_concurrent = int(os.getenv("CHROMA_MAX_CONCURRENT", _CHROMA_WORKERS))
+        self._sem: Optional[asyncio.Semaphore] = None
 
     # ====================== HELPER METHODS ======================
     def _get_or_create_vectorstore(self, embedding: Embeddings) -> Chroma:
@@ -84,30 +85,27 @@ class ChromaVectorStore(BaseVectorStore):
             print("Không có document nào để thêm")
             return
 
+        mode = "REPLACE" if replace else "INCREMENTAL"
+        print(f"[Chroma] {mode}: {len(documents)} documents...")
+ 
         if replace:
-            print(f"REPLACE MODE: Xóa DB cũ và tạo mới với {len(documents)} documents...")
             self._delete_collection_sync()
-        else:
-            print(f"INCREMENTAL MODE: Thêm {len(documents)} documents mới...")
-
-        # Tạo ID 
+ 
         ids = [self._generate_stable_id(doc) for doc in documents]
-
+ 
         if replace:
-            # Tạo mới hoàn toàn
             self._vectorstore = Chroma.from_documents(
                 documents=documents,
                 embedding=embedding,
                 persist_directory=self.persist_dir,
                 collection_name=self.collection_name,
-                ids=ids
+                ids=ids,
             )
         else:
-            # Thêm incremental
             vs = self._get_or_create_vectorstore(embedding)
             vs.add_documents(documents=documents, ids=ids)
-
-        print(f"Đã lưu thành công {len(documents)} documents vào collection '{self.collection_name}'")
+ 
+        print(f"[Chroma] Đã lưu {len(documents)} docs vào '{self.collection_name}'")
 
     def _similarity_search_sync(
         self,
@@ -133,12 +131,13 @@ class ChromaVectorStore(BaseVectorStore):
             embedding_model = Embedder().get_embedding_model()
             self._get_or_create_vectorstore(embedding_model)
 
-        safe_kwargs = {}
-        if search_kwargs:
-            safe_kwargs.update({k: v for k, v in search_kwargs.items() if k != "score_threshold"})
+        safe_kwargs = {
+            k: v for k, v in (search_kwargs or {}).items()
+            if k != "score_threshold"
+        }
 
         retriever = self._vectorstore.as_retriever(search_kwargs=safe_kwargs)
-        print(f"Retriever sẵn sàng (k={safe_kwargs.get('k')})")
+        print(f"[Chroma] Retriever sẵn sàng (k={safe_kwargs.get('k')})")
         return retriever
     
     def delete_collection(self) -> None:

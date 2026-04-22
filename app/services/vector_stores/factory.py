@@ -18,7 +18,13 @@ class VectorStoreFactory:
     def get_vector_store(cls) -> BaseVectorStore:
         store_type = os.getenv("VECTOR_STORE_TYPE", "chroma").lower()
         if store_type not in cls._stores:
-            raise ValueError(f"Không hỗ trợ VECTOR_STORE_TYPE = {store_type}. Hỗ trợ: {list(cls._stores.keys())}")
-        
-        store_class = cls._stores[store_type]
-        return store_class()
+            raise ValueError(
+                f"VECTOR_STORE_TYPE='{store_type}' không được hỗ trợ. "
+                f"Các giá trị hợp lệ: {list(cls._stores.keys())}"
+            )
+        return cls._stores[store_type]()
+    
+    @classmethod
+    def register(cls, name: str, store_class: type) -> None:
+        """Đăng ký vector store mới từ bên ngoài — không cần sửa factory."""
+        cls._stores[name.lower()] = store_class
