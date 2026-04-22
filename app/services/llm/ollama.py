@@ -65,7 +65,7 @@ class OllamaLLMClient(BaseLLMClient):
                 model=self.model_name,
                 temperature=self.temperature,
                 num_ctx=4096,       # Giảm context window cho tốc độ Prefill nhanh hơn
-                num_predict=512,    # Giới hạn output tối đa 512 tokens (~400 từ TV)
+                num_predict=1024,   # Giới hạn output tối đa 1024 tokens (~800 từ TV)
             )
         return self._llm
 
@@ -88,3 +88,14 @@ class OllamaLLMClient(BaseLLMClient):
             return response.content
         except Exception as e:
             raise LLMException("Lỗi khi gọi Ollama", self.model_name, e)
+
+    def stream(self, messages: List[BaseMessage]):
+        """Generator: Yield từng chunk text từ LLM (dùng cho Streaming)"""
+        try:
+            llm = self.get_llm()
+            logger.debug(f"[LLM Stream] Gửi prompt với {len(messages)} messages")
+            for chunk in llm.stream(messages):
+                if chunk.content:
+                    yield chunk.content
+        except Exception as e:
+            raise LLMException("Lỗi khi stream Ollama", self.model_name, e)
