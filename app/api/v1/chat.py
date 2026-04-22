@@ -35,18 +35,21 @@ async def chat(request: ChatRequest):
     API Chatbot RAG - Hỗ trợ multi-turn conversation (Blocking - Chờ xong mới trả)
     """
     try:
+        time_start = time.time()
         history = _build_history(request)
         # Gọi RAG Service
+        
         result = await asyncio.wait_for(
             rag_service.aanswer(query=request.query, chat_history=history),
             timeout=_REQUEST_TIMEOUT,
         )
-
+        time_end = time.time()
         # Tạo response custom
         response = ChatResponse(
             success=True,
             query=request.query,
             answer=result["answer"],
+            total_time= round(time_end - time_start, 6)
             # sources=[Source(**s) for s in result["sources"]],
             # retrieved_count=result["retrieved_count"],
         )

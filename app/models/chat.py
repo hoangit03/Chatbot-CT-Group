@@ -27,4 +27,4 @@ class ChatResponse(BaseModel):
     # retrieved_count: int
     timestamp: str = datetime.now().isoformat()
     error: Optional[str] = None
-    total_time = str
+    total_time: float
