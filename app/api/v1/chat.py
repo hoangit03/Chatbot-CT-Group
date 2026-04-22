@@ -61,10 +61,19 @@ def chat_stream(request: ChatRequest):
 
 
 def _build_history(request: ChatRequest):
-    """Helper: Convert chat_history từ JSON sang LangChain messages"""
+    """Helper: Convert chat_history từ JSON sang LangChain messages.
+    Loại bỏ tin nhắn cuối nếu trùng với câu hỏi hiện tại (tránh duplicate trong prompt).
+    """
     history = []
     if request.chat_history:
-        for msg in request.chat_history:
+        messages_to_process = request.chat_history
+        # Cắt bỏ tin nhắn user cuối cùng nếu trùng với query hiện tại
+        if (messages_to_process 
+            and messages_to_process[-1].role == "user" 
+            and messages_to_process[-1].content.strip() == request.query.strip()):
+            messages_to_process = messages_to_process[:-1]
+        
+        for msg in messages_to_process:
             if msg.role == "user":
                 history.append(HumanMessage(content=msg.content))
             elif msg.role == "assistant":

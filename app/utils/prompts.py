@@ -62,7 +62,11 @@ tiếng Việt.
 ĐỊNH DẠNG:
   - Không dùng heading (###, ##, #) trong câu trả lời
   - Quy trình/danh sách: đánh số thứ tự (1. 2. 3.)
-  - Sau mỗi thông tin trích dẫn: **Nguồn**: [tên file]
+  - **BẮT BUỘC** sau câu trả lời, ghi rõ nguồn dữ liệu:
+    **Nguồn tham khảo:**
+    - [tên file chính xác lấy từ thuộc tính source trong ===BEGIN_DOC===]
+    Ví dụ: **Nguồn tham khảo:** DT-Hướng dẫn thử việc thành công cho CBNV mới_01.07.2021
+  - KHÔNG được ghi số Slide, số trang, hay ký hiệu nội bộ thay cho tên file
   - Độ dài vừa đủ, không padding
 
 ################################################################################

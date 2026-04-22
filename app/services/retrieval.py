@@ -100,10 +100,20 @@ class RetrievalService:
                 print(f"  {marker} #{rank+1:<4} {score:<12.4f} {source:<40} \"{snippet}...\"")
             print(f"  {'─'*70}\n")
 
-            # Lấy lại top_k sau rerank
-            final_docs = [doc for doc, _ in scored_docs[:self.top_k]]
-            for doc, score in scored_docs[:self.top_k]:
-                doc.metadata["rerank_score"] = float(score)
+            # ── Lọc bỏ docs có score ÂM (không liên quan) ──
+            positive_docs = [(doc, score) for doc, score in scored_docs if score > 0]
+            if positive_docs:
+                # Chỉ lấy những docs thật sự liên quan
+                final_docs = [doc for doc, _ in positive_docs[:self.top_k]]
+                for doc, score in positive_docs[:self.top_k]:
+                    doc.metadata["rerank_score"] = float(score)
+                print(f"  🧹 [Filter] Lọc: {len(positive_docs)} docs có score > 0 / {len(scored_docs)} tổng")
+            else:
+                # Fallback: nếu tất cả đều âm, lấy top 2 ít âm nhất
+                final_docs = [doc for doc, _ in scored_docs[:2]]
+                for doc, score in scored_docs[:2]:
+                    doc.metadata["rerank_score"] = float(score)
+                print(f"  ⚠️  [Filter] Tất cả score âm! Fallback lấy top 2 ít âm nhất.")
             reranked = True
         else:
             final_docs = docs[:self.top_k]
