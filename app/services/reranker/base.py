@@ -13,3 +13,12 @@ class BaseReranker(ABC):
         Trả về list (document, rerank_score) đã sắp xếp theo độ liên quan giảm dần
         """
         pass
+
+    async def arerank(
+        self, query: str, documents: List[Document]
+    ) -> List[Tuple[Document, float]]:
+        """
+        Bất đồng bộ — mặc định offload rerank() sang asyncio.to_thread().
+        """
+        import asyncio
+        return await asyncio.to_thread(self.rerank, query, documents)
