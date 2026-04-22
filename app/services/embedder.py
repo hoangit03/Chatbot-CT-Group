@@ -33,10 +33,10 @@ class Embedder(Embeddings):
 
     def _initialize(self):
         """Chỉ chạy 1 lần khi tạo instance đầu tiên"""
-        self.device = os.getenv("DEVICE", "cpu")
+        self.device = os.getenv("EMBED_DEVICE", "cpu")
         self.model_name = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-large")
         
-        max_concurrent = int(os.getenv("EMBED_MAX_CONCURRENT"),_EMBED_WORKERS)
+        max_concurrent = int(os.getenv("EMBED_MAX_CONCURRENT",_EMBED_WORKERS))
 
         print(
             f"[Embedder] model={self.model_name} | "
