@@ -371,7 +371,12 @@ Trả về JSON:"""
     # ══════════════════════════════════════════════════════════════
 
     def stream_answer(self, query: str, chat_history: List[BaseMessage] = None):
-        """Generator: Regex Filter → Smart Router → Retrieval → Stream LLM."""
+        """Generator: Regex Filter → Smart Router → Retrieval → Stream LLM.
+        
+        Yield 2 loại content:
+        - Thinking steps: "<!-- thinking -->..." → UI hiện progress  
+        - LLM content: text thường → UI hiện câu trả lời
+        """
         chat_history = chat_history or []
 
         t_total = time.time()
@@ -388,6 +393,7 @@ Trả về JSON:"""
             )
         else:
             # ── Layer 2: Smart Router ──
+            yield "<!-- thinking -->🧠 Đang phân tích câu hỏi...\n"
             t_rw = time.time()
             route = self._smart_route(query, chat_history)
             t_route = time.time() - t_rw
@@ -403,6 +409,7 @@ Trả về JSON:"""
                 print(f"  🔍 [Search Query] \"{search_query}\"")
 
                 # ── Layer 3: Retrieval ──
+                yield f"<!-- thinking -->🔍 Đang tìm kiếm tài liệu: \"{search_query[:50]}\"...\n"
                 t0 = time.time()
                 retrieval_result = self.retrieval.retrieve(query=search_query)
                 t_retrieval = time.time() - t0
@@ -410,7 +417,18 @@ Trả về JSON:"""
 
                 retrieval_result.query = query
 
+                # Thông báo kết quả retrieval
+                n_docs = len(retrieval_result.documents)
+                if n_docs > 0:
+                    yield f"<!-- thinking -->📚 Tìm thấy {n_docs} tài liệu liên quan\n"
+                else:
+                    yield "<!-- thinking -->📭 Không tìm thấy tài liệu phù hợp\n"
+
         # ── Layer 4: Stream LLM ──
+        yield "<!-- thinking -->✍️ Đang soạn câu trả lời...\n"
+        # Xóa thinking khi bắt đầu stream content thật
+        yield "<!-- clear_thinking -->"
+
         t1 = time.time()
         total_chars = 0
         for chunk in self.generation.stream_generate(retrieval_result, chat_history):

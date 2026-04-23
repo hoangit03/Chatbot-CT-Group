@@ -235,7 +235,36 @@ if prompt := st.chat_input("Nhập câu hỏi..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        # Streaming: Bot gõ từng chữ trực tiếp trên giao diện
-        answer = st.write_stream(stream_chat_api(prompt))
+        # 2 vùng hiển thị: thinking (tạm) + content (chính)
+        thinking_container = st.empty()
+        content_container = st.empty()
+
+        thinking_lines = []
+        full_answer = ""
+        is_thinking = True
+
+        for chunk in stream_chat_api(prompt):
+            if chunk == "<!-- clear_thinking -->":
+                # Xóa thinking, chuyển sang hiển thị content
+                is_thinking = False
+                thinking_container.empty()
+                continue
+
+            if chunk.startswith("<!-- thinking -->"):
+                # Hiện thinking step
+                step_text = chunk.replace("<!-- thinking -->", "").strip()
+                thinking_lines.append(step_text)
+                thinking_md = "\n\n".join(f"*{line}*" for line in thinking_lines)
+                thinking_container.markdown(thinking_md)
+            else:
+                # Stream content thật
+                full_answer += chunk
+                content_container.markdown(full_answer + "▌")
+
+        # Render final (bỏ cursor ▌)
+        if full_answer:
+            content_container.markdown(full_answer)
+        
+        answer = full_answer if full_answer else "Không có câu trả lời"
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
