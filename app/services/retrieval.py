@@ -26,7 +26,7 @@ class RetrievalService:
     """Retrieval Service với hỗ trợ Reranker (SOLID)"""
 
     def __init__(self, embedder: Optional[Embedder] = None, reranker: Optional[BaseReranker] = None):
-        self.top_k = int(os.getenv("RETRIEVAL_TOP_K", 4))
+        self.top_k = int(os.getenv("RETRIEVAL_TOP_K", 5))
         self.embedder = embedder or Embedder()
         self.vector_store = VectorStoreFactory.get_vector_store()
         self.reranker_top_k = int(os.getenv("RERANKER_TOP_K", 10))
@@ -78,6 +78,21 @@ class RetrievalService:
                 doc for doc in docs
                 if doc.metadata.get("similarity_score", 1.0) >= score_threshold
             ]
+
+        # Step 1.5: Lọc bỏ docs dạng Form/Template (chỉ chứa header, không có nội dung)
+        _TEMPLATE_MARKERS = [
+            "Biểu mẫu / Form / Template",
+            "Category: Biểu mẫu",
+            "Cần điền tay",
+        ]
+        before_filter = len(docs)
+        docs = [
+            doc for doc in docs
+            if not any(marker in doc.page_content[:200] for marker in _TEMPLATE_MARKERS)
+        ]
+        filtered_templates = before_filter - len(docs)
+        if filtered_templates > 0:
+            print(f"  🗑️  [Template Filter] Loại bỏ {filtered_templates} docs dạng Form/Template")
 
         # Step 2: Rerank nếu được bật
         if self.reranker and docs:
