@@ -106,16 +106,22 @@ def _is_gibberish(text: str) -> bool:
         return True
 
     vietnamese_vowels = set("aeiouyàáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ")
-    consonant_streak = 0
-    for c in no_space:
-        if c.isalpha() and c not in vietnamese_vowels:
-            consonant_streak += 1
-            if consonant_streak >= 4:
-                return True
-        else:
-            consonant_streak = 0
+    # 4+ phụ âm liên tiếp TRONG 1 TỪ → không tồn tại trong tiếng Việt
+    # Check từng từ riêng (KHÔNG check chuỗi nối liền vì ranh giới từ
+    # tạo false positive: "đang"+"thắc" → "ngth" = 4 phụ âm)
+    for word in words:
+        consonant_streak = 0
+        for c in word:
+            if c.isalpha() and c not in vietnamese_vowels:
+                consonant_streak += 1
+                if consonant_streak >= 4:
+                    return True
+            else:
+                consonant_streak = 0
 
-    if not any(c in vietnamese_vowels for c in q) and len(q) > 3:
+    # Tất cả các từ đều không có nguyên âm → vô nghĩa
+    has_any_vowel = any(c in vietnamese_vowels for w in words for c in w)
+    if not has_any_vowel and len(q) > 3:
         return True
 
     return False
