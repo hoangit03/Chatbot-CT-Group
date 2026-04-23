@@ -117,28 +117,32 @@ class RetrievalService:
 
             # ── Lọc thông minh: score > 0 + đảm bảo tối thiểu MIN_DOCS ──
             # Lý do: score > 0 strict thì nhiều khi chỉ còn 1 doc → LLM thiếu context → hallucination
-            # Giải pháp: lấy hết positive + bổ sung top negative nếu chưa đủ MIN_DOCS
+            # Giải pháp: lấy hết positive + bổ sung borderline (>= SCORE_FLOOR) nếu chưa đủ MIN_DOCS
             MIN_DOCS = 2  # Tối thiểu 2 docs để LLM có đủ ngữ cảnh
             SCORE_FLOOR = -1.0  # Không lấy docs quá thấp (hoàn toàn không liên quan)
 
             positive_docs = [(doc, score) for doc, score in scored_docs if score > 0]
+            borderline_docs = [(doc, score) for doc, score in scored_docs 
+                               if score <= 0 and score >= SCORE_FLOOR]
             
             if len(positive_docs) >= MIN_DOCS:
                 # Đủ docs tốt → chỉ lấy positive
                 selected = positive_docs[:self.top_k]
                 print(f"  🧹 [Filter] Lọc: {len(positive_docs)} docs score > 0 / {len(scored_docs)} tổng")
             elif positive_docs:
-                # Có positive nhưng chưa đủ MIN_DOCS → bổ sung top negative
-                borderline = [(doc, score) for doc, score in scored_docs 
-                              if score <= 0 and score >= SCORE_FLOOR]
+                # Có positive nhưng chưa đủ MIN_DOCS → bổ sung borderline
                 need = MIN_DOCS - len(positive_docs)
-                selected = positive_docs + borderline[:need]
+                selected = positive_docs + borderline_docs[:need]
                 selected = selected[:self.top_k]
-                print(f"  🧹 [Filter] Lọc: {len(positive_docs)} positive + {min(need, len(borderline))} borderline = {len(selected)} docs")
+                print(f"  🧹 [Filter] Lọc: {len(positive_docs)} positive + {min(need, len(borderline_docs))} borderline = {len(selected)} docs")
+            elif borderline_docs:
+                # Không có positive, nhưng CÓ borderline >= SCORE_FLOOR → vẫn lấy
+                selected = borderline_docs[:MIN_DOCS]
+                print(f"  🧹 [Filter] Lọc: 0 positive, lấy {len(selected)} borderline (score >= {SCORE_FLOOR}) / {len(scored_docs)} tổng")
             else:
-                # KHÔNG có positive nào → trả rỗng chống hallucination
+                # THẬT SỰ không có doc nào đủ điểm → trả rỗng chống hallucination
                 selected = []
-                print(f"  🚫 [Filter] Tất cả {len(scored_docs)} docs score âm → Trả rỗng (chống Hallucination)")
+                print(f"  🚫 [Filter] Tất cả {len(scored_docs)} docs score < {SCORE_FLOOR} → Trả rỗng (chống Hallucination)")
 
             if selected:
                 final_docs = [doc for doc, _ in selected]
