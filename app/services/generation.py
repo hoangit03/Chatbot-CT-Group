@@ -396,8 +396,11 @@ class GenerationService:
             prompt_vars = {"question": question, "chat_history": chat_history}
         elif not retrieval_result.documents:
             prompt_type = PromptType.SIMPLE
-            prompt_vars = {"question": question, "chat_history": chat_history}
+            # ⛔ Xóa AI answers khỏi history để LLM không dùng câu trả lời cũ làm "kiến thức"
+            safe_history = [msg for msg in chat_history if not isinstance(msg, AIMessage)]
+            prompt_vars = {"question": question, "chat_history": safe_history}
             print(f"  🚫 [Intent] SIMPLE — Không có tài liệu liên quan → Chống Hallucination")
+            print(f"  🧹 [History] Đã xóa {len(chat_history) - len(safe_history)} AI messages khỏi context (chống rò rỉ kiến thức)")
             logger.info("[Generation] Intent: SIMPLE (no docs → anti-hallucination)")
 
         else:
@@ -465,8 +468,11 @@ class GenerationService:
             prompt_vars = {"question": question, "chat_history": chat_history}
         elif not retrieval_result.documents:
             prompt_type = PromptType.SIMPLE
-            prompt_vars = {"question": question, "chat_history": chat_history}
+            # ⛔ Xóa AI answers khỏi history để LLM không dùng câu trả lời cũ làm "kiến thức"
+            safe_history = [msg for msg in chat_history if not isinstance(msg, AIMessage)]
+            prompt_vars = {"question": question, "chat_history": safe_history}
             print(f"  🚫 [Stream Intent] SIMPLE — Không có tài liệu → Chống Hallucination")
+            print(f"  🧹 [History] Đã xóa {len(chat_history) - len(safe_history)} AI messages khỏi context (chống rò rỉ kiến thức)")
         else:
             context = _build_safe_context(retrieval_result.documents)
             prompt_type = PromptType.RAG
