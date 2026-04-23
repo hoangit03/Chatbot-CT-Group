@@ -124,3 +124,14 @@ class OllamaLLMClient(BaseLLMClient):
             async for chunk in llm.astream(messages):
                 if chunk.content:
                     yield chunk.content
+
+    def stream(self, messages: List[BaseMessage]):
+        """Generator: Yield từng chunk text từ LLM (dùng cho Streaming)"""
+        try:
+            llm = self.get_llm()
+            logger.debug(f"[LLM Stream] Gửi prompt với {len(messages)} messages")
+            for chunk in llm.stream(messages):
+                if chunk.content:
+                    yield chunk.content
+        except Exception as e:
+            raise LLMException("Lỗi khi stream Ollama", self.model_name, e)
