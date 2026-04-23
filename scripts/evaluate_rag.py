@@ -107,4 +107,4 @@ def run_evaluation(excel_path: str):
     print("Hoàn tất đánh giá RAG!")
 
 if __name__ == "__main__":
-    run_evaluation("data/evaluation/test_dataset_hybrid_20260420_0832.xlsx")
+    run_evaluation(r"D:\AnChamLam\CT-Group\Chatbot\Final-version\Chatbot-CT-Group\test_dataset_hybrid_20260420_0832.xlsx")

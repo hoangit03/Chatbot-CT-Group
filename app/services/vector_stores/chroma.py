@@ -38,7 +38,6 @@ class ChromaVectorStore(BaseVectorStore):
         self._max_concurrent = int(os.getenv("CHROMA_MAX_CONCURRENT", _CHROMA_WORKERS))
         self._sem: Optional[asyncio.Semaphore] = None
 
-
     def _get_sem(self) -> asyncio.Semaphore:
         """Lazy-init semaphore trong running event loop."""
         if self._sem is None:
@@ -47,9 +46,13 @@ class ChromaVectorStore(BaseVectorStore):
     # ====================== HELPER METHODS ======================
     def _get_or_create_vectorstore(self, embedding: Embeddings) -> Chroma:
         """Load DB đã tồn tại hoặc tạo mới"""
+        import chromadb
         if self._vectorstore is None or self._embedding != embedding:
+            chroma_host = os.getenv("CHROMA_HOST", "localhost")
+            chroma_port = int(os.getenv("CHROMA_PORT", 8002))
+            http_client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
             self._vectorstore = Chroma(
-                persist_directory=self.persist_dir,
+                client=http_client,
                 embedding_function=embedding,
                 collection_name=self.collection_name
             )
@@ -64,14 +67,16 @@ class ChromaVectorStore(BaseVectorStore):
 
     def _delete_collection_sync(self) -> None:
         """Xóa toàn bộ collection (dùng khi replace=True)"""
-        if Path(self.persist_dir).exists():
-            import shutil
-            shutil.rmtree(self.persist_dir)
-            Path(self.persist_dir).mkdir(parents=True, exist_ok=True)
+        import chromadb
+        try:
+            http_client = chromadb.HttpClient(host="localhost", port=8002)
+            http_client.delete_collection(name=self.collection_name)
+        except Exception as e:
+            pass # Lỗi nếu collection chưa tồn tại
         
         self._vectorstore = None
         self._embedding = None
-        print(f"Đã xóa toàn bộ collection '{self.collection_name}'")
+        print(f"Đã xóa toàn bộ collection '{self.collection_name}' qua HTTP API")
 
     # ====================== MAIN METHODS ======================
     def _add_documents_sync(
@@ -100,10 +105,13 @@ class ChromaVectorStore(BaseVectorStore):
         ids = [self._generate_stable_id(doc) for doc in documents]
  
         if replace:
+            import chromadb
+            http_client = chromadb.HttpClient(host="localhost", port=8002)
+            # Tạo mới hoàn toàn
             self._vectorstore = Chroma.from_documents(
                 documents=documents,
                 embedding=embedding,
-                persist_directory=self.persist_dir,
+                client=http_client,
                 collection_name=self.collection_name,
                 ids=ids,
             )
@@ -130,18 +138,16 @@ class ChromaVectorStore(BaseVectorStore):
         )
         return results
 
+
     def _get_retriever_sync(self, search_kwargs: Optional[dict] = None):
-        """Trả về retriever đã sẵn sàng sử dụng cho Retrieval"""
         if not self._vectorstore:
             from app.services.embedder import Embedder
-            embedding_model = Embedder().get_embedding_model()
-            self._get_or_create_vectorstore(embedding_model)
-
+            self._get_or_create_vectorstore(Embedder().get_embedding_model())
+ 
         safe_kwargs = {
             k: v for k, v in (search_kwargs or {}).items()
             if k != "score_threshold"
         }
-
         retriever = self._vectorstore.as_retriever(search_kwargs=safe_kwargs)
         print(f"[Chroma] Retriever sẵn sàng (k={safe_kwargs.get('k')})")
         return retriever

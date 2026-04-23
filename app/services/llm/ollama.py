@@ -29,6 +29,9 @@ class OllamaLLMClient(BaseLLMClient):
     def __init__(self):
         self.model_name = os.getenv("MODEL_LLM", "qwen3:4b")
         self.temperature = float(os.getenv("TEMPERATURE", 0.0))
+        self.num_ctx = int(os.getenv("OLLAMA_NUM_CTX", 8192))
+        self.num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", 512))
+        self.num_thread = int(os.getenv("OLLAMA_NUM_THREAD", 0))
         self._llm: Optional[BaseChatModel] = None
         logger.info(f"[LLM] Khởi tạo Ollama client với model: {self.model_name}")
 
@@ -75,8 +78,9 @@ class OllamaLLMClient(BaseLLMClient):
             self._llm = ChatOllama(
                 model=self.model_name,
                 temperature=self.temperature,
-                num_ctx=16384,      # context lớn để hỗ trợ history dài
-                num_predict=-1,
+                num_ctx=self.num_ctx,      # context lớn để hỗ trợ history dài
+                num_predict=self.num_predict,
+                num_thread=self.num_thread if self.num_thread > 0 else None,
             )
         return self._llm
 

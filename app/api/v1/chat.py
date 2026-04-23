@@ -1,21 +1,22 @@
 from fastapi import APIRouter, HTTPException
-from typing import List, AsyncIterator
+from typing import List
+import asyncio
+import json
+import time
 
 from langchain_core.messages import HumanMessage, AIMessage
 from fastapi.responses import StreamingResponse
 from app.models.chat import ChatRequest, ChatResponse, Message, Source
 from app.services.rag_service import RAGService
-import asyncio
-import os
-import json
+from fastapi.responses import StreamingResponse
+from typing import AsyncIterator
 import logging
 
-logger = logging.getLogger(__name__)
-
-
 router = APIRouter(prefix="/api/v1", tags=["Chatbot"])
-_REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", 60))
+logger = logging.getLogger(__name__)
 rag_service = RAGService()
+
+_REQUEST_TIMEOUT = float(60)
 
 def _build_history(chat_history):
     history = []
