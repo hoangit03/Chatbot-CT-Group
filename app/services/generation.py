@@ -395,20 +395,30 @@ class GenerationService:
         # 1d — Audit history
         chat_history = _audit_chat_history(chat_history or [])
 
-        # 1c — Intent detection (if/elif — chỉ một nhánh chạy)
+        # 1c — Intent detection (Layer 4 — Regex only, KHÔNG gọi LLM)
+        print(f"\n  {'─'*60}")
+        print(f"  🛡️  [LAYER 4] Intent Detection (regex, 0ms):")
+        print(f"  {'─'*60}")
+        print(f"  📝 Question (sanitized): \"{question[:200]}\"")
+        if had_injection_prefix:
+            print(f"  ⚠️  Injection prefix đã bị strip!")
+
         if _is_invalid_query(question):
             prompt_type = PromptType.INVALID_QUERY
             prompt_vars = {"question": question}
+            print(f"  🔴 Intent: INVALID_QUERY")
             logger.info("[Generation] Intent: INVALID_QUERY")
 
         elif _is_jailbreak(question):
             prompt_type = PromptType.INVALID_QUERY
             prompt_vars = {"question": "Câu hỏi không hợp lệ"}
+            print(f"  🔴 Intent: JAILBREAK → blocked")
             logger.warning(f"[Security] Pure jailbreak blocked: {question[:100]}")
 
         elif _is_chitchat(question):
             prompt_type = PromptType.CHITCHAT
             prompt_vars = {"question": question, "chat_history": chat_history}
+            print(f"  🟡 Intent: CHITCHAT")
             logger.info("[Generation] Intent: CHITCHAT")
 
         elif not retrieval_result.documents:
@@ -416,8 +426,8 @@ class GenerationService:
             # ⛔ Xóa AI answers khỏi history để LLM không dùng câu trả lời cũ làm "kiến thức"
             safe_history = [msg for msg in chat_history if not isinstance(msg, AIMessage)]
             prompt_vars = {"question": question, "chat_history": safe_history}
-            print(f"  🚫 [Intent] SIMPLE — Không có tài liệu liên quan → Chống Hallucination")
-            print(f"  🧹 [History] Đã xóa {len(chat_history) - len(safe_history)} AI messages khỏi context (chống rò rỉ kiến thức)")
+            print(f"  🟠 Intent: SIMPLE — Không có tài liệu → Chống Hallucination")
+            print(f"  🧹 Đã xóa {len(chat_history) - len(safe_history)} AI messages khỏi history")
             logger.info("[Generation] Intent: SIMPLE (no docs → anti-hallucination)")
 
         else:
@@ -428,7 +438,9 @@ class GenerationService:
                 "context": context,
                 "chat_history": chat_history,
             }
+            print(f"  🟢 Intent: RAG | Docs: {len(retrieval_result.documents)} | Context: {len(context)} chars")
             logger.info(f"[Generation] Intent: RAG | Docs: {len(retrieval_result.documents)}")
+        print(f"  {'─'*60}")
 
         # 2 — Generate
         prompt = PromptRegistry.get(prompt_type)
@@ -475,23 +487,32 @@ class GenerationService:
         # 1d — Audit history
         chat_history = _audit_chat_history(chat_history or [])
 
-        # 1c — Intent detection
+        # 1c — Intent detection (Layer 4 — Regex only, KHÔNG gọi LLM)
+        print(f"\n  {'─'*60}")
+        print(f"  🛡️  [LAYER 4 STREAM] Intent Detection (regex, 0ms):")
+        print(f"  {'─'*60}")
+        print(f"  📝 Question (sanitized): \"{question[:200]}\"")
+        if had_injection_prefix:
+            print(f"  ⚠️  Injection prefix đã bị strip!")
+
         if _is_invalid_query(question):
             prompt_type = PromptType.INVALID_QUERY
             prompt_vars = {"question": question}
+            print(f"  🔴 Intent: INVALID_QUERY")
         elif _is_jailbreak(question):
             prompt_type = PromptType.INVALID_QUERY
             prompt_vars = {"question": "Câu hỏi không hợp lệ"}
+            print(f"  🔴 Intent: JAILBREAK → blocked")
         elif _is_chitchat(question):
             prompt_type = PromptType.CHITCHAT
             prompt_vars = {"question": question, "chat_history": chat_history}
+            print(f"  🟡 Intent: CHITCHAT")
         elif not retrieval_result.documents:
             prompt_type = PromptType.SIMPLE
-            # ⛔ Xóa AI answers khỏi history để LLM không dùng câu trả lời cũ làm "kiến thức"
             safe_history = [msg for msg in chat_history if not isinstance(msg, AIMessage)]
             prompt_vars = {"question": question, "chat_history": safe_history}
-            print(f"  🚫 [Stream Intent] SIMPLE — Không có tài liệu → Chống Hallucination")
-            print(f"  🧹 [History] Đã xóa {len(chat_history) - len(safe_history)} AI messages khỏi context (chống rò rỉ kiến thức)")
+            print(f"  🟠 Intent: SIMPLE — Không có tài liệu → Chống Hallucination")
+            print(f"  🧹 Đã xóa {len(chat_history) - len(safe_history)} AI messages khỏi history")
         else:
             context = _build_safe_context(retrieval_result.documents)
             prompt_type = PromptType.RAG
@@ -500,7 +521,9 @@ class GenerationService:
                 "context": context,
                 "chat_history": chat_history,
             }
+            print(f"  🟢 Intent: RAG | Docs: {len(retrieval_result.documents)} | Context: {len(context)} chars")
             logger.info(f"[Stream] Intent: RAG | Docs: {len(retrieval_result.documents)}")
+        print(f"  {'─'*60}")
 
         # 2 — Stream Generate
         prompt = PromptRegistry.get(prompt_type)

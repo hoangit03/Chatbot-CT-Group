@@ -89,5 +89,14 @@ def _build_history(request: ChatRequest):
                 content = msg.content[:300] if len(msg.content) > 300 else msg.content
                 history.append(AIMessage(content=content))
     
-    print(f"  📜 [History] {len(history)}/{len(request.chat_history or [])} messages (giới hạn {MAX_HISTORY_MESSAGES})")
+    print(f"\n{'='*60}")
+    print(f"  📜 [HISTORY] {len(history)}/{len(request.chat_history or [])} messages (giới hạn {MAX_HISTORY_MESSAGES})")
+    print(f"  📝 [QUERY] \"{request.query}\"")
+    print(f"{'='*60}")
+    if history:
+        for i, msg in enumerate(history):
+            role = "👤 User" if isinstance(msg, HumanMessage) else "🤖 Bot"
+            snippet = msg.content[:150].replace('\n', ' ')
+            print(f"  [{i+1}] {role}: \"{snippet}{'...' if len(msg.content) > 150 else ''}\"")
+        print(f"{'='*60}")
     return history

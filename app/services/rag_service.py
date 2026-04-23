@@ -183,15 +183,33 @@ Trả về JSON:"""
             HumanMessage(content=route_prompt),
         ]
 
+        # ── DEBUG: In input gửi vào Smart Router ──
+        print(f"\n  {'─'*60}")
+        print(f"  🧠 [SMART ROUTER] LLM Call #1 — Input:")
+        print(f"  {'─'*60}")
+        print(f"  📨 System prompt: {len(_SMART_ROUTER_SYSTEM)} ký tự")
+        print(f"  📨 User prompt:")
+        for line in route_prompt.strip().split('\n'):
+            print(f"      {line}")
+        print(f"  {'─'*60}")
+
         try:
             t0 = time.time()
             raw_response = self.generation.llm_client.invoke(messages).strip()
             t_elapsed = time.time() - t0
 
+            # ── DEBUG: In raw output từ LLM ──
+            print(f"\n  🧠 [SMART ROUTER] LLM Call #1 — Output ({t_elapsed:.2f}s):")
+            print(f"  {'─'*60}")
+            print(f"  📤 Raw response:")
+            for line in raw_response.split('\n'):
+                print(f"      {line}")
+            print(f"  {'─'*60}")
+
             # Parse JSON từ response
             result = self._parse_router_json(raw_response, query)
 
-            print(f"\n  🧠 [Smart Router] {t_elapsed:.2f}s")
+            print(f"\n  🧠 [SMART ROUTER] Kết quả parse:")
             print(f"      Intent  : {result.intent}")
             print(f"      Keywords: \"{result.keywords}\"")
             if result.intent == "follow_up":
