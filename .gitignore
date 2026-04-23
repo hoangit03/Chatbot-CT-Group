@@ -28,3 +28,6 @@ shared_data/data_output/*
 
 # VectorDB data
 vectorstore/chroma_db/
+
+# Docs
+docs/

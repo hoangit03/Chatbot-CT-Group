@@ -92,6 +92,7 @@ def delete_vectordb():
 
 
 def call_chat_api(prompt):
+    """Gọi API chat (blocking - backup)"""
     try:
         res = requests.post(
             f"{BASE_URL_CHAT}/chat",
@@ -108,6 +109,30 @@ def call_chat_api(prompt):
 
     except Exception as e:
         return f"Lỗi hệ thống: {e}"
+
+
+def stream_chat_api(prompt):
+    """Generator: Gọi API chat/stream, yield từng chunk text cho Streamlit."""
+    try:
+        res = requests.post(
+            f"{BASE_URL_CHAT}/chat/stream",
+            json={
+                "query": prompt,
+                "chat_history": st.session_state.messages
+            },
+            stream=True,
+            timeout=12000
+        )
+
+        if res.status_code == 200:
+            for chunk in res.iter_content(chunk_size=None, decode_unicode=True):
+                if chunk:
+                    yield chunk
+        else:
+            yield f"Lỗi API: {res.text}"
+
+    except Exception as e:
+        yield f"Lỗi hệ thống: {e}"
 
 # =========================
 # SIDEBAR - UPLOAD
@@ -201,7 +226,7 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 # =========================
-# CHAT INPUT
+# CHAT INPUT (STREAMING)
 # =========================
 if prompt := st.chat_input("Nhập câu hỏi..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -210,8 +235,7 @@ if prompt := st.chat_input("Nhập câu hỏi..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        with st.spinner("Đang trả lời..."):
-            answer = call_chat_api(prompt)
-            st.markdown(answer)
+        # Streaming: Bot gõ từng chữ trực tiếp trên giao diện
+        answer = st.write_stream(stream_chat_api(prompt))
 
     st.session_state.messages.append({"role": "assistant", "content": answer})
