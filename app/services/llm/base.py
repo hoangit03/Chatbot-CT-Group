@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import List, Optional, AsyncIterator
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 
@@ -19,4 +19,11 @@ class BaseLLMClient(ABC):
         """
         pass
 
+    @abstractmethod
+    def stream(self, messages: List[BaseMessage]):
+        """Sync generator — yield từng text chunk."""
+ 
+    @abstractmethod
+    async def astream(self, messages: List[BaseMessage]) -> AsyncIterator[str]:
+        """Async generator — yield từng text chunk (native async)."""
 
