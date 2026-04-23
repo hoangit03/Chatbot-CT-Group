@@ -112,6 +112,40 @@ def run_chunking_pipeline(md_file_name: str) -> bool:
     final_splits = text_splitter.split_documents(md_header_splits)
     print(f"[Chunking Engine] Bước 2: Recursive split → {len(final_splits)} chunks (trước filter)")
 
+    # Bước 2.5: Contextual Headers — gắn heading section cha vào chunk con
+    # Khi 1 section dài bị cắt thành N chunks, chunk 2..N mất heading
+    # → Reranker không biết chunk đó thuộc section nào → score thấp → bị bỏ
+    # Fix: Tìm heading cuối cùng trong mỗi chunk, gắn vào chunk tiếp theo
+    _HEADING_PATTERN = re.compile(
+        r'^(?:'
+        r'#{1,4}\s+.+'           # Markdown heading: # ... #### ...
+        r'|\d+\.\s+.{5,}'       # Numbered heading: 1. Tiêu đề dài
+        r'|CHƯƠNG\s+[IVXLCDM0-9]+'  # CHƯƠNG I, CHƯƠNG II...
+        r')',
+        re.MULTILINE
+    )
+    
+    contextual_injected = 0
+    for i in range(len(final_splits)):
+        content = final_splits[i].page_content
+        
+        # Tìm heading cuối cùng trong chunk này
+        headings = _HEADING_PATTERN.findall(content)
+        if headings:
+            last_heading = headings[-1].strip()
+            
+            # Gắn heading này vào chunk TIẾP THEO nếu chunk đó không bắt đầu bằng heading
+            if i + 1 < len(final_splits):
+                next_content = final_splits[i + 1].page_content
+                if not _HEADING_PATTERN.match(next_content):
+                    # Prepend contextual header
+                    ctx_prefix = f"[Thuộc mục: {last_heading}]\n"
+                    final_splits[i + 1].page_content = ctx_prefix + next_content
+                    contextual_injected += 1
+
+    if contextual_injected > 0:
+        print(f"[Chunking Engine] Bước 2.5: Contextual Headers → gắn heading cho {contextual_injected} chunks")
+
     # Bước 3: Filter — loại bỏ template chunks và chunks rỗng
     filtered_template = 0
     filtered_empty = 0

@@ -64,7 +64,7 @@ def _build_history(request: ChatRequest):
     """Helper: Convert chat_history từ JSON sang LangChain messages.
     
     QUAN TRỌNG: Giới hạn tối đa 6 messages gần nhất (3 cặp Q&A).
-    Lý do: num_ctx=4096 tokens. Nếu nhồi 20+ messages lịch sử,
+    Lý do: num_ctx=8192 tokens. Nếu nhồi 20+ messages lịch sử,
     tài liệu RAG sẽ bị đẩy ra ngoài context window → LLM ảo giác.
     """
     MAX_HISTORY_MESSAGES = 6  # 3 cặp Q&A = vừa đủ ngữ cảnh
