@@ -31,3 +31,4 @@ datasets
 pandas
 langchain-permit
 rank_bm2c5
+qdrant_client

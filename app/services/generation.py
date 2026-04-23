@@ -7,8 +7,9 @@ from typing import List, Optional, Tuple
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 from app.utils.prompts import PromptRegistry, PromptType
-from app.services.llm.ollama import BaseLLMClient, OllamaLLMClient
+from app.services.llm.base import BaseLLMClient
 from app.services.retrieval import RetrievalResult
+from app.services.llm.factory import LLMFactory
 import asyncio
 
 logger = logging.getLogger(__name__)
@@ -375,8 +376,11 @@ class GenerationService:
     """
 
     def __init__(self, llm_client: Optional[BaseLLMClient] = None):
-        self.llm_client = llm_client or OllamaLLMClient()
-        logger.info("GenerationService (hardened v2) initialized")
+        self.llm_client = llm_client or LLMFactory.get_client()
+        logger.info(
+            f"GenerationService initialized | "
+            f"LLM={self.llm_client.__class__.__name__}"
+        )
 
     def _build_prompt(self, retrieval_result: RetrievalResult, chat_history: List[BaseMessage]):
         """Tách logic build prompt để dùng chung cho sync và async."""
@@ -396,11 +400,8 @@ class GenerationService:
             prompt_vars = {"question": question, "chat_history": chat_history}
         elif not retrieval_result.documents:
             prompt_type = PromptType.SIMPLE
-            # Xóa AI answers khỏi history để LLM không dùng câu trả lời cũ làm "kiến thức"
             safe_history = [msg for msg in chat_history if not isinstance(msg, AIMessage)]
             prompt_vars = {"question": question, "chat_history": safe_history}
-            print(f"[Intent] SIMPLE — Không có tài liệu liên quan → Chống Hallucination")
-            print(f"[History] Đã xóa {len(chat_history) - len(safe_history)} AI messages khỏi context (chống rò rỉ kiến thức)")
             logger.info("[Generation] Intent: SIMPLE (no docs → anti-hallucination)")
 
         else:
@@ -417,85 +418,7 @@ class GenerationService:
 
         return messages, original_lang, prompt_type
 
-    def stream_generate(
-        self,
-        retrieval_result: RetrievalResult,
-        chat_history: List[BaseMessage] = None,
-    ):
-        """Generator: Cùng logic Intent Detection, nhưng yield từng chunk từ LLM."""
-
-        # 1a — Normalize
-        question = _decode_and_normalize(retrieval_result.query)
-
-        # 1b — Strip injection prefix
-        question, had_injection_prefix = _extract_real_question(question)
-
-        # 1d — Audit history
-        chat_history = _audit_chat_history(chat_history or [])
-
-        # 1c — Intent detection
-        if _is_invalid_query(question):
-            prompt_type = PromptType.INVALID_QUERY
-            prompt_vars = {"question": question}
-        elif _is_jailbreak(question):
-            prompt_type = PromptType.INVALID_QUERY
-            prompt_vars = {"question": "Câu hỏi không hợp lệ"}
-        elif _is_chitchat(question):
-            prompt_type = PromptType.CHITCHAT
-            prompt_vars = {"question": question, "chat_history": chat_history}
-        elif not retrieval_result.documents:
-            prompt_type = PromptType.SIMPLE
-            # ⛔ Xóa AI answers khỏi history để LLM không dùng câu trả lời cũ làm "kiến thức"
-            safe_history = [msg for msg in chat_history if not isinstance(msg, AIMessage)]
-            prompt_vars = {"question": question, "chat_history": safe_history}
-            print(f"  🚫 [Stream Intent] SIMPLE — Không có tài liệu → Chống Hallucination")
-            print(f"  🧹 [History] Đã xóa {len(chat_history) - len(safe_history)} AI messages khỏi context (chống rò rỉ kiến thức)")
-        else:
-            context = _build_safe_context(retrieval_result.documents)
-            prompt_type = PromptType.RAG
-            prompt_vars = {
-                "question": question,
-                "context": context,
-                "chat_history": chat_history,
-            }
-            logger.info(f"[Stream] Intent: RAG | Docs: {len(retrieval_result.documents)}")
-
-        # 2 — Stream Generate
-        prompt = PromptRegistry.get(prompt_type)
-        messages = prompt.invoke(prompt_vars).messages
-
-        # ── DEBUG: In Prompt gửi vào LLM (Stream) ──
-        print(f"\n  {'─'*70}")
-        print(f"  📨 PROMPT GỬI VÀO LLM - STREAM ({len(messages)} messages):")
-        print(f"  {'─'*70}")
-        for i, msg in enumerate(messages):
-            role = msg.__class__.__name__.replace("Message", "")
-            content = getattr(msg, 'content', '')
-            content_len = len(content) if isinstance(content, str) else 0
-            snippet = content[:200].replace('\n', '↵ ') if isinstance(content, str) else str(content)[:200]
-            print(f"  [{i+1}] 🏷️  Role: {role} | {content_len} ký tự")
-            print(f"      📝 \"{snippet}...\"")
-            print()
-        print(f"  {'─'*70}")
-
-        for chunk in self.llm_client.stream(messages):
-            yield chunk
-
-        # Gắn nguồn tham khảo bằng CODE sau khi stream xong
-        if prompt_type == PromptType.RAG and retrieval_result.documents:
-            yield _build_source_citation(retrieval_result.documents)
-
-
-    async def astream_generate(self,
-        retrieval_result: RetrievalResult,
-        chat_history: List[BaseMessage] = None,):
-        messages, _, prompt_type = self._build_prompt(retrieval_result,chat_history)
-
-        for chunk in self.llm_client.astream(messages):
-            yield chunk
-
-        if prompt_type == PromptType.RAG and retrieval_result.documents:
-            yield _build_source_citation(retrieval_result.documents)
+    # -----------------------------SYNC----------------------
 
     def generate(
         self,
@@ -505,10 +428,23 @@ class GenerationService:
 
         messages, original_lang, _ = self._build_prompt(retrieval_result, chat_history)
         raw_answer = self.llm_client.invoke(messages)
-
-        # 3 — Validate output
         return _validate_output(raw_answer, original_lang)
-    
+
+    def stream_generate(
+        self,
+        retrieval_result: RetrievalResult,
+        chat_history: List[BaseMessage] = None,
+    ):
+        """Generator: Cùng logic Intent Detection, nhưng yield từng chunk từ LLM."""
+
+        messages, original_lang, prompt_type = self._build_prompt(retrieval_result, chat_history)
+        for chunk in self.llm_client.stream(messages):
+            yield chunk
+        if prompt_type == PromptType.RAG and retrieval_result.documents:
+            yield _build_source_citation(retrieval_result.documents)
+
+    # -----------------------------ASYNC----------------------
+
     async def agenerate(
         self,
         retrieval_result: RetrievalResult,
@@ -517,3 +453,15 @@ class GenerationService:
         messages, original_lang, _ = self._build_prompt(retrieval_result, chat_history)
         raw_answer = await self.llm_client.ainvoke(messages)
         return _validate_output(raw_answer, original_lang)
+
+    async def astream_generate(self,
+        retrieval_result: RetrievalResult,
+        chat_history: List[BaseMessage] = None,):
+        messages, _, prompt_type = self._build_prompt(retrieval_result,chat_history)
+
+        async for chunk in self.llm_client.astream(messages):
+            yield chunk
+
+        if prompt_type == PromptType.RAG and retrieval_result.documents:
+            yield _build_source_citation(retrieval_result.documents)
+    
