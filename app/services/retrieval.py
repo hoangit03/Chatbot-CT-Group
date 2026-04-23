@@ -26,10 +26,10 @@ class RetrievalService:
     """Retrieval Service với hỗ trợ Reranker (SOLID)"""
 
     def __init__(self, embedder: Optional[Embedder] = None, reranker: Optional[BaseReranker] = None):
-        self.top_k = int(os.getenv("RETRIEVAL_TOP_K",6))
+        self.top_k = int(os.getenv("RETRIEVAL_TOP_K", 4))
         self.embedder = embedder or Embedder()
         self.vector_store = VectorStoreFactory.get_vector_store()
-        self.reranker_top_k = int(os.getenv("RERANKER_TOP_K",20))
+        self.reranker_top_k = int(os.getenv("RERANKER_TOP_K", 10))
         # Khởi tạo reranker nếu được bật trong .env
         self.reranker: Optional[BaseReranker] = None
         if os.getenv("RERANKER_ENABLED", "false").lower() == "true":
