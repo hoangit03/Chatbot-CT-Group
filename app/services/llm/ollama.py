@@ -29,7 +29,7 @@ class OllamaLLMClient(BaseLLMClient):
     def __init__(self):
         self.model_name = os.getenv("MODEL_LLM", "qwen3:4b")
         self.temperature = float(os.getenv("TEMPERATURE", 0.0))
-        self.num_ctx = int(os.getenv("OLLAMA_NUM_CTX", 8192))
+        self.num_ctx = int(os.getenv("OLLAMA_NUM_CTX", 16384))
         self.num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", 512))
         self.num_thread = int(os.getenv("OLLAMA_NUM_THREAD", 0))
         self._llm: Optional[BaseChatModel] = None
