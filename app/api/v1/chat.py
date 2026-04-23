@@ -68,12 +68,12 @@ async def chat_astream(request: ChatRequest):
             async for chunk in rag_service.astream_answer(
                 query=request.query, chat_history=history
             ):
-                yield f"data: {chunk}\n\n"
+                yield f"{chunk}"
         except Exception as exc:
             logger.exception("[/chat/astream] Error during streaming")
-            yield f"data: [ERROR] {exc}\n\n"
+            yield f"[ERROR] {exc}\n\n"
         finally:
-            yield "data: [DONE]\n\n"
+            yield ""
  
     return StreamingResponse(
         _generate(),
