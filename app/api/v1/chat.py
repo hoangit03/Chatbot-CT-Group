@@ -64,65 +64,81 @@ async def chat(request: ChatRequest):
         )
 
 
+# @router.post("/chat/stream")
+# async def chat_stream(request: ChatRequest):
+#     """
+#     Server-Sent Events — token xuất hiện ngay khi LLM generate.
+#     Không giảm tổng thời gian nhưng UX tốt hơn nhiều so với chờ 20s trắng.
+ 
+#     Response format:
+#       data: {"type": "token", "content": "Xin"}
+#       data: {"type": "token", "content": " chào"}
+#       data: {"type": "done", "sources": [...], "retrieved_count": 3}
+#       data: [DONE]
+#     """
+#     async def generate() -> AsyncIterator[str]:
+#         try:
+#             history = _build_history(request)
+ 
+#             # Retrieval đầy đủ trước (không stream được)
+#             retrieval_result = await asyncio.wait_for(
+#                 rag_service.retrieval.aretrieve(query=request.query),
+#                 timeout=_REQUEST_TIMEOUT,
+#             )
+ 
+#             # Build prompt (sync, <1ms)
+#             messages, original_lang = rag_service.generation._build_prompt(
+#                 retrieval_result, history
+#             )
+ 
+#             # Stream LLM token-by-token
+#             async for token in rag_service.generation.llm_client.astream(messages):
+#                 yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
+ 
+#             # Gửi metadata sau khi stream xong
+#             sources = [
+#                 {
+#                     "file_name": doc.metadata.get("file_name"),
+#                     "score": float(
+#                         doc.metadata.get("rerank_score")
+#                         or doc.metadata.get("similarity_score", 0)
+#                     ),
+#                 }
+#                 for doc in retrieval_result.documents
+#             ]
+#             yield f"data: {json.dumps({'type': 'done', 'sources': sources, 'retrieved_count': len(sources)}, ensure_ascii=False)}\n\n"
+#             yield "data: [DONE]\n\n"
+ 
+#         except asyncio.TimeoutError:
+#             yield f"data: {json.dumps({'type': 'error', 'message': 'Timeout'})}\n\n"
+#         except Exception as e:
+#             logger.error(f"[Stream] Error: {e}", exc_info=True)
+#             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+ 
+#     return StreamingResponse(
+#         generate(),
+#         media_type="text/event-stream",
+#         headers={
+#             "Cache-Control": "no-cache",
+#             "X-Accel-Buffering": "no",  # tắt nginx buffer nếu dùng nginx
+#         },
+#     )
+
+
 @router.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
+def chat_stream(request: ChatRequest):
     """
-    Server-Sent Events — token xuất hiện ngay khi LLM generate.
-    Không giảm tổng thời gian nhưng UX tốt hơn nhiều so với chờ 20s trắng.
- 
-    Response format:
-      data: {"type": "token", "content": "Xin"}
-      data: {"type": "token", "content": " chào"}
-      data: {"type": "done", "sources": [...], "retrieved_count": 3}
-      data: [DONE]
+    API Chatbot RAG - Streaming (Gõ từng chữ trả về cho UI)
+    Trả về text/event-stream cho Streamlit hoặc bất kỳ SSE client nào.
     """
-    async def generate() -> AsyncIterator[str]:
-        try:
-            history = _build_history(request.chat_history)
- 
-            # Retrieval đầy đủ trước (không stream được)
-            retrieval_result = await asyncio.wait_for(
-                rag_service.retrieval.aretrieve(query=request.query),
-                timeout=_REQUEST_TIMEOUT,
-            )
- 
-            # Build prompt (sync, <1ms)
-            messages, original_lang = rag_service.generation._build_prompt(
-                retrieval_result, history
-            )
- 
-            # Stream LLM token-by-token
-            async for token in rag_service.generation.llm_client.astream(messages):
-                yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
- 
-            # Gửi metadata sau khi stream xong
-            sources = [
-                {
-                    "file_name": doc.metadata.get("file_name"),
-                    "score": float(
-                        doc.metadata.get("rerank_score")
-                        or doc.metadata.get("similarity_score", 0)
-                    ),
-                }
-                for doc in retrieval_result.documents
-            ]
-            yield f"data: {json.dumps({'type': 'done', 'sources': sources, 'retrieved_count': len(sources)}, ensure_ascii=False)}\n\n"
-            yield "data: [DONE]\n\n"
- 
-        except asyncio.TimeoutError:
-            yield f"data: {json.dumps({'type': 'error', 'message': 'Timeout'})}\n\n"
-        except Exception as e:
-            logger.error(f"[Stream] Error: {e}", exc_info=True)
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
- 
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # tắt nginx buffer nếu dùng nginx
-        },
-    )
+    try:
+        history = _build_history(request)
+        return StreamingResponse(
+            rag_service.stream_answer(query=request.query, chat_history=history),
+            media_type="text/event-stream"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def _build_history(request: ChatRequest):

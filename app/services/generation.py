@@ -415,30 +415,7 @@ class GenerationService:
         prompt = PromptRegistry.get(prompt_type)
         messages = prompt.invoke(prompt_vars).messages
 
-        # ── DEBUG: In Prompt gửi vào LLM ──
-        print(f"\n  {'─'*70}")
-        print(f"  📨 PROMPT GỬI VÀO LLM ({len(messages)} messages):")
-        print(f"  {'─'*70}")
-        for i, msg in enumerate(messages):
-            role = msg.__class__.__name__.replace("Message", "")
-            content = getattr(msg, 'content', '')
-            content_len = len(content) if isinstance(content, str) else 0
-            snippet = content[:200].replace('\n', '↵ ') if isinstance(content, str) else str(content)[:200]
-            print(f"  [{i+1}] 🏷️  Role: {role} | {content_len} ký tự")
-            print(f"      📝 \"{snippet}...\"")
-            print()
-        print(f"  {'─'*70}")
-
-        raw_answer = self.llm_client.invoke(messages)
-
-        # 3 — Validate output
-        validated = _validate_output(raw_answer, original_lang)
-
-        # 4 — Gắn nguồn tham khảo bằng CODE (không phụ thuộc LLM)
-        if prompt_type == PromptType.RAG and retrieval_result.documents:
-            validated += _build_source_citation(retrieval_result.documents)
-
-        return validated
+        return messages, original_lang
 
     def stream_generate(
         self,
