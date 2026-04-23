@@ -388,6 +388,7 @@ Trả về JSON:"""
 
         if skip_reason:
             print(f"\n  ⚡ [Pre-RAG] Bypass RAG → Lý do: {skip_reason} | Query: \"{query}\"")
+            yield f"<!-- thinking -->⚡ Phát hiện: {skip_reason}\n"
             retrieval_result = RetrievalResult(
                 documents=[], query=query, top_k=0, total_retrieved=0, reranked=False
             )
@@ -398,18 +399,21 @@ Trả về JSON:"""
             route = self._smart_route(query, chat_history)
             t_route = time.time() - t_rw
 
+            # Hiện kết quả Smart Router
+            yield f"<!-- thinking -->🧠 Phân loại: {route.intent} ({t_route:.1f}s)\n"
+
             if route.intent == "spam":
                 print(f"  🚫 [Smart Router] SPAM → Bypass RAG")
                 retrieval_result = RetrievalResult(
                     documents=[], query=query, top_k=0, total_retrieved=0, reranked=False
                 )
             else:
-                # search_query = keywords (new) hoặc rewritten_query (follow_up)
                 search_query = route.rewritten_query if route.intent == "follow_up" else route.keywords
                 print(f"  🔍 [Search Query] \"{search_query}\"")
 
+                yield f"<!-- thinking -->🔍 Tìm kiếm: \"{search_query[:50]}\"\n"
+
                 # ── Layer 3: Retrieval ──
-                yield f"<!-- thinking -->🔍 Đang tìm kiếm tài liệu: \"{search_query[:50]}\"...\n"
                 t0 = time.time()
                 retrieval_result = self.retrieval.retrieve(query=search_query)
                 t_retrieval = time.time() - t0
@@ -417,16 +421,23 @@ Trả về JSON:"""
 
                 retrieval_result.query = query
 
-                # Thông báo kết quả retrieval
+                # Hiện kết quả retrieval chi tiết
                 n_docs = len(retrieval_result.documents)
                 if n_docs > 0:
-                    yield f"<!-- thinking -->📚 Tìm thấy {n_docs} tài liệu liên quan\n"
+                    yield f"<!-- thinking -->📚 Tìm thấy {n_docs} tài liệu ({t_retrieval:.1f}s)\n"
+                    # Hiện tên sources
+                    sources = set()
+                    for doc in retrieval_result.documents:
+                        src = doc.metadata.get("source_file") or doc.metadata.get("source") or ""
+                        if src:
+                            sources.add(src.split("/")[-1][:40])
+                    for src in list(sources)[:3]:
+                        yield f"<!-- thinking -->  📄 {src}\n"
                 else:
-                    yield "<!-- thinking -->📭 Không tìm thấy tài liệu phù hợp\n"
+                    yield f"<!-- thinking -->📭 Không tìm thấy tài liệu phù hợp ({t_retrieval:.1f}s)\n"
 
         # ── Layer 4: Stream LLM ──
         yield "<!-- thinking -->✍️ Đang soạn câu trả lời...\n"
-        # Xóa thinking khi bắt đầu stream content thật
         yield "<!-- clear_thinking -->"
 
         t1 = time.time()
