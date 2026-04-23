@@ -39,7 +39,9 @@ QUY TẮC REWRITTEN_QUERY:
 - Nếu intent=follow_up: viết lại câu hỏi thành câu ĐỘC LẬP, bổ sung ngữ cảnh từ lịch sử
 - Nếu intent=new_question hoặc spam: copy nguyên keywords vào rewritten_query
 
-CHỈ TRẢ VỀ JSON, KHÔNG giải thích."""
+CHỈ TRẢ VỀ JSON, KHÔNG giải thích.
+
+/nothink"""
 
 
 @dataclass
@@ -208,9 +210,18 @@ Trả về JSON:"""
             )
 
     def _parse_router_json(self, raw: str, original_query: str) -> SmartRouteResult:
-        """Parse JSON output từ Smart Router, với fallback robust."""
-        # Thử tìm JSON trong response
-        json_match = re.search(r'\{[^}]+\}', raw, re.DOTALL)
+        """Parse JSON output từ Smart Router, với fallback robust cho Qwen3."""
+        # Strip <think>...</think> block nếu Qwen3 vẫn output thinking
+        cleaned = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip()
+        if not cleaned:
+            cleaned = raw  # Fallback nếu strip mất hết
+
+        # Thử tìm JSON object trong response (hỗ trợ cả multiline)
+        json_match = re.search(r'\{\s*"intent".*?\}', cleaned, re.DOTALL)
+        if not json_match:
+            # Fallback: tìm bất kỳ JSON-like block nào
+            json_match = re.search(r'\{[^{}]*\}', cleaned, re.DOTALL)
+
         if json_match:
             try:
                 data = json.loads(json_match.group())
@@ -239,8 +250,9 @@ Trả về JSON:"""
             except json.JSONDecodeError:
                 pass
 
-        # Fallback: không parse được JSON → coi là new_question
-        logger.warning(f"[Smart Router] Cannot parse JSON: {raw[:200]}")
+        # Fallback: không parse được JSON → coi là new_question, dùng query gốc
+        logger.warning(f"[Smart Router] Cannot parse JSON from: {cleaned[:200]}")
+        print(f"  ⚠️  [Smart Router] JSON parse fail → fallback: dùng query gốc")
         return SmartRouteResult(
             intent="new_question",
             keywords=original_query,
