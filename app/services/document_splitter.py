@@ -35,7 +35,7 @@ class RecursiveSplitter(DocumentSplitter):
     """Concrete implementation sử dụng RecursiveCharacterTextSplitter"""
     
     def __init__(self):
-        self.chunk_size = int(os.getenv("CHUNK_SIZE", 1000))
+        self.chunk_size = int(os.getenv("CHUNK_SIZE", 1500))
         self.chunk_overlap = int(os.getenv("CHUNK_OVERLAP", 250))
         self.splitter = RecursiveCharacterTextSplitter(
             chunk_size=self.chunk_size,
