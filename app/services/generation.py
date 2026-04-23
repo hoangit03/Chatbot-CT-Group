@@ -491,7 +491,7 @@ class GenerationService:
         chat_history: List[BaseMessage] = None,):
         messages, _, prompt_type = self._build_prompt(retrieval_result,chat_history)
 
-        for chunk in self.llm_client.astream(messages):
+        async for chunk in self.llm_client.astream(messages):
             yield chunk
 
         if prompt_type == PromptType.RAG and retrieval_result.documents:
