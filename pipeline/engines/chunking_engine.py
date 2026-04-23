@@ -11,7 +11,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 SHARED_DIR = os.getenv("SHARED_DATA_DIR", os.path.join(REPO_ROOT, "shared_data"))
 
 # Chunking config từ .env
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1500))
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 1000))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 250))
 
 # MD files should be inside data_output/result
