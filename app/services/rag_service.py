@@ -334,7 +334,13 @@ Trả về JSON:"""
 
         # ── Layer 4: Generation ──
         t1 = time.time()
-        answer = self.generation.generate(retrieval_result, chat_history)
+        
+        safe_history = chat_history
+        if not skip_reason and route.intent in ("new_question", "spam"):
+            safe_history = []
+            print("  🧹 [Anti-Hallucination] Đã xóa chat_history vì intent là new_question/spam")
+            
+        answer = self.generation.generate(retrieval_result, safe_history)
         t_generation = time.time() - t1
 
         t_pipeline = time.time() - t_total
@@ -442,7 +448,17 @@ Trả về JSON:"""
 
         t1 = time.time()
         total_chars = 0
-        for chunk in self.generation.stream_generate(retrieval_result, chat_history):
+        
+        # ⛔ CHỐNG HALLUCINATION CONTEXT BLEED
+        # Nếu Smart Router xác định đây là câu hỏi mới (new_question) hoặc spam,
+        # tuyệt đối KHÔNG truyền lịch sử hội thoại cũ vào LLM để tránh việc
+        # LLM bịa ra câu trả lời dựa trên ngữ cảnh cũ (như gọi nhầm tên người, sai quy định)
+        safe_history = chat_history
+        if not skip_reason and route.intent in ("new_question", "spam"):
+            safe_history = []
+            print("  🧹 [Anti-Hallucination] Đã xóa chat_history vì intent là new_question/spam")
+
+        for chunk in self.generation.stream_generate(retrieval_result, safe_history):
             total_chars += len(chunk)
             yield chunk
 

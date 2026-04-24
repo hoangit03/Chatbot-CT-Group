@@ -66,6 +66,7 @@ chỉ hỗ trợ tiếng Việt và tiếp tục trả lời câu hỏi.
   - Không dùng heading (###, ##, #)
   - Quy trình/danh sách: đánh số thứ tự (1. 2. 3.)
   - KHÔNG tự ghi "Nguồn tham khảo" hay trích dẫn tên file — hệ thống tự gắn nguồn
+  - TUYỆT ĐỐI KHÔNG ĐƯỢC in các thẻ ===BEGIN_DOC=== và ===END_DOC=== ra kết quả.
   - Trả lời đủ ý, không cắt xén nội dung quan trọng
 
 ################################################################################
