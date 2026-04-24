@@ -68,6 +68,7 @@ def _build_history(request: ChatRequest):
     ra ngoài context window → LLM ảo giác.
     """
     MAX_HISTORY_MESSAGES = 3  # Tối đa 3 messages gần nhất
+
     
     history = []
     if request.chat_history:
