@@ -125,6 +125,7 @@ def run_chunking_pipeline(md_file_name: str) -> bool:
         re.MULTILINE
     )
     
+    current_last_heading = None
     contextual_injected = 0
     for i in range(len(final_splits)):
         content = final_splits[i].page_content
@@ -132,16 +133,16 @@ def run_chunking_pipeline(md_file_name: str) -> bool:
         # Tìm heading cuối cùng trong chunk này
         headings = _HEADING_PATTERN.findall(content)
         if headings:
-            last_heading = headings[-1].strip()
+            current_last_heading = headings[-1].strip()
             
-            # Gắn heading này vào chunk TIẾP THEO nếu chunk đó không bắt đầu bằng heading
-            if i + 1 < len(final_splits):
-                next_content = final_splits[i + 1].page_content
-                if not _HEADING_PATTERN.match(next_content):
-                    # Prepend contextual header
-                    ctx_prefix = f"[Thuộc mục: {last_heading}]\n"
-                    final_splits[i + 1].page_content = ctx_prefix + next_content
-                    contextual_injected += 1
+        # Gắn heading này vào chunk TIẾP THEO nếu chunk đó không bắt đầu bằng heading
+        if current_last_heading and (i + 1 < len(final_splits)):
+            next_content = final_splits[i + 1].page_content
+            if not _HEADING_PATTERN.match(next_content):
+                # Prepend contextual header
+                ctx_prefix = f"[Thuộc mục: {current_last_heading}]\n"
+                final_splits[i + 1].page_content = ctx_prefix + next_content
+                contextual_injected += 1
 
     if contextual_injected > 0:
         print(f"[Chunking Engine] Bước 2.5: Contextual Headers → gắn heading cho {contextual_injected} chunks")

@@ -250,15 +250,19 @@ _CHITCHAT_PATTERNS = re.compile(
     r"""
     ^(\s*(
         xin\s*chào | chào\s*(buổi)?\s*(sáng|trưa|chiều|tối|anh|chị|bạn|em|mn|mọi\s*người)?
-        | hello | hi+ | hey | howdy | good\s*(morning|afternoon|evening|night)
-        | alo | ơi
-        | bạn\s*(là\s*(ai|gì)|làm\s*(được\s*)?gì|có\s*thể\s*giúp|giúp\s*được\s*gì)
+        | hé\s*l[oô] | hell+o+ | hi+\s*$| hey+ | howdy | good\s*(morning|afternoon|evening|night)
+        | alo+ | ơi | ê\s*$
+        | bạn\s*(là\s*(ai|gì)|làm\s*(được\s*)?gì|có\s*thể\s*giúp|giúp\s*được\s*gì|có\s*khỏe|khỏe\s*không|khỏe\s*hong)
         | chatbot\s*(này\s*)?(là\s*gì|dùng\s*để|làm\s*gì)
-        | (em|bạn)\s*(là\s*ai|là\s*gì|tên\s*gì)
+        | (em|bạn)\s*(là\s*ai|là\s*gì|tên\s*gì|ơi)
         | introduce\s*yourself | who\s*are\s*you | what\s*can\s*you\s*do
         | (cảm?\s*ơn|thanks?|thank\s*you|tks|ty|camon|cam\s*on)(.{0,40})?
         | bạn\s*giỏi\s*(quá|thật|vậy) | (hay|tốt|được)\s*(lắm|quá|đấy|vậy)
         | (tạm\s*biệt|bye+|goodbye|gặp\s*lại|hẹn\s*gặp|see\s*you)(.{0,40})?
+        | mấy\s*giờ\s*(rồi)? | bây\s*giờ\s*là\s*mấy\s*giờ | what\s*time
+        | hôm\s*nay\s*(là\s*)?(ngày|thứ)\s*mấy | today\s*is
+        | (tôi|mình)\s*cần\s*(bạn\s*)?(giúp|hỗ\s*trợ)\s*(tôi\s*)?
+        | giúp\s*(tôi|mình)\s*(với|đi|nha|nhé)?
     )\s*)$
     """,
     re.VERBOSE | re.IGNORECASE,
@@ -423,11 +427,11 @@ class GenerationService:
 
         elif not retrieval_result.documents:
             prompt_type = PromptType.SIMPLE
-            # ⛔ Xóa AI answers khỏi history để LLM không dùng câu trả lời cũ làm "kiến thức"
-            safe_history = [msg for msg in chat_history if not isinstance(msg, AIMessage)]
+            # ⛔ Không truyền history khi không có tài liệu để tránh LLM đọc câu hỏi cũ và bịa câu trả lời
+            safe_history = []
             prompt_vars = {"question": question, "chat_history": safe_history}
             print(f"  🟠 Intent: SIMPLE — Không có tài liệu → Chống Hallucination")
-            print(f"  🧹 Đã xóa {len(chat_history) - len(safe_history)} AI messages khỏi history")
+            print(f"  🧹 Đã xóa toàn bộ history context để tránh ảo giác câu hỏi cũ")
             logger.info("[Generation] Intent: SIMPLE (no docs → anti-hallucination)")
 
         else:
@@ -509,10 +513,10 @@ class GenerationService:
             print(f"  🟡 Intent: CHITCHAT")
         elif not retrieval_result.documents:
             prompt_type = PromptType.SIMPLE
-            safe_history = [msg for msg in chat_history if not isinstance(msg, AIMessage)]
+            safe_history = []
             prompt_vars = {"question": question, "chat_history": safe_history}
             print(f"  🟠 Intent: SIMPLE — Không có tài liệu → Chống Hallucination")
-            print(f"  🧹 Đã xóa {len(chat_history) - len(safe_history)} AI messages khỏi history")
+            print(f"  🧹 Đã xóa toàn bộ history context để tránh ảo giác câu hỏi cũ")
         else:
             context = _build_safe_context(retrieval_result.documents)
             prompt_type = PromptType.RAG
