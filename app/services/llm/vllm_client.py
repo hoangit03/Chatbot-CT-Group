@@ -22,7 +22,7 @@ class VLLMClient(BaseLLMClient):
     """vLLM client — gọi qua OpenAI-compatible API (nhanh hơn Ollama)"""
 
     def __init__(self):
-        self.model_name = os.getenv("MODEL_LLM", "Qwen/Qwen3-4B-Instruct")
+        self.model_name = os.getenv("MODEL_LLM", "Qwen/Qwen2.5-3B-Instruct")
         self.base_url = os.getenv("VLLM_BASE_URL", "http://vllm:8000/v1")
         self.temperature = float(os.getenv("TEMPERATURE", 0.1))
         self._llm: Optional[BaseChatModel] = None
