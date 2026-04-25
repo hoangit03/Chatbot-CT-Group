@@ -13,7 +13,7 @@ rag_service = RAGService()
 
 
 @router.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest):
+async def chat(request: ChatRequest):
     """
     API Chatbot RAG - Hỗ trợ multi-turn conversation (Blocking - Chờ xong mới trả)
     """
@@ -21,7 +21,7 @@ def chat(request: ChatRequest):
         history = _build_history(request)
 
         # Gọi RAG Service
-        result = rag_service.answer(
+        result = await rag_service.aanswer(
             query=request.query,
             chat_history=history
         )
@@ -45,7 +45,7 @@ def chat(request: ChatRequest):
 
 
 @router.post("/chat/stream")
-def chat_stream(request: ChatRequest):
+async def chat_stream(request: ChatRequest):
     """
     API Chatbot RAG - Streaming (Gõ từng chữ trả về cho UI)
     Trả về text/event-stream cho Streamlit hoặc bất kỳ SSE client nào.
@@ -53,7 +53,7 @@ def chat_stream(request: ChatRequest):
     try:
         history = _build_history(request)
         return StreamingResponse(
-            rag_service.stream_answer(query=request.query, chat_history=history),
+            rag_service.astream_answer(query=request.query, chat_history=history),
             media_type="text/event-stream"
         )
     except Exception as e:

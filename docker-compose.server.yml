@@ -21,8 +21,8 @@ services:
       --host 0.0.0.0
       --port 8000
       --max-model-len 10240
-      --gpu-memory-utilization 0.8
-      --max-num-seqs 16
+      --gpu-memory-utilization 0.45
+      --max-num-seqs 8
       --enforce-eager
     ports:
       - "127.0.0.1:8000:8000"
@@ -170,12 +170,35 @@ services:
     networks:
       - chatbot_network
 
+  # ── TEI Embedder Server ──
+  tei_embedder:
+    image: ghcr.io/huggingface/text-embeddings-inference:1.5
+    container_name: tei_embedder
+    restart: unless-stopped
+    volumes:
+      - tei_cache:/data
+    command: --model-id intfloat/multilingual-e5-large
+    ports:
+      - "8081:80"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      chatbot_network:
+        aliases:
+          - tei_embedder
+
 volumes:
   vllm_cache:
   paddleocr_cache:
   rabbitmq_data:
   chroma_data:
   redis_data:
+  tei_cache:
 
 networks:
   chatbot_network:

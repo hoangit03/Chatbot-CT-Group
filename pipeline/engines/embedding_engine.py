@@ -2,7 +2,7 @@ import os
 import json
 import chromadb
 from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
+from app.services.embedder import Embedder
 
 load_dotenv()
 
@@ -15,18 +15,10 @@ CHUNKS_DIR = os.path.join(SHARED_DIR, "data_output", "result_chunks")
 
 os.makedirs(CHROMA_DB_DIR, exist_ok=True)
 
-# === Embedding Model Selection dựa trên EMBED_DEVICE ===
-EMBED_DEVICE = os.getenv("EMBED_DEVICE", "cpu").lower()
-
-if EMBED_DEVICE == "cuda":
-    EMBED_MODEL_NAME = os.getenv("EMBEDDING_MODEL_GPU", "intfloat/multilingual-e5-large")
-    print(f"[Embedding Engine] Nạp model GPU: {EMBED_MODEL_NAME} trên CUDA...")
-else:
-    EMBED_MODEL_NAME = os.getenv("EMBEDDING_MODEL_CPU", "paraphrase-multilingual-MiniLM-L12-v2")
-    print(f"[Embedding Engine] Nạp model CPU: {EMBED_MODEL_NAME} trên CPU...")
-
-embedder = SentenceTransformer(EMBED_MODEL_NAME, device=EMBED_DEVICE)
-print("[Embedding Engine] Nạp mô hình hoàn tất!")
+# Khởi tạo Embedder (Tự động dùng TEI nếu có TEI_EMBEDDER_URL)
+embedder_instance = Embedder()
+embedder_model = embedder_instance.get_embedding_model()
+print("[Embedding Engine] Nạp mô hình hoàn tất qua Embedder Service!")
 
 # Khởi tạo VectorDB Client thông qua Docker
 chroma_host = os.getenv("CHROMA_HOST", "localhost")
@@ -76,12 +68,10 @@ def run_embedding_pipeline(json_file_name: str) -> bool:
         batch_documents.append(c_text)
         batch_metadatas.append(c_meta)
 
-    # Lấy dimension thực tế từ model
-    embedding_dim = embedder.get_sentence_embedding_dimension()
-    print(f"[Embedding Engine] Đang ép {len(chunks)} Chunks thành Vector ({embedding_dim} chiều)...")
+    print(f"[Embedding Engine] Đang ép {len(chunks)} Chunks thành Vector...")
     
-    # Tạo Embeddings
-    embeddings = embedder.encode(batch_documents, show_progress_bar=False).tolist()
+    # Tạo Embeddings qua Langchain interface
+    embeddings = embedder_model.embed_documents(batch_documents)
     
     print("[Embedding Engine] Tiến hành nhét vào kho ChromaDB (Upsert)...")
     collection.upsert(

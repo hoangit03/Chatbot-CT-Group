@@ -565,3 +565,85 @@ class GenerationService:
         # Gắn nguồn tham khảo bằng CODE sau khi stream xong
         if prompt_type == PromptType.RAG and retrieval_result.documents:
             yield _build_source_citation(retrieval_result.documents)
+
+    async def agenerate(
+        self,
+        retrieval_result: RetrievalResult,
+        chat_history: List[BaseMessage] = None,
+    ) -> str:
+        question = _decode_and_normalize(retrieval_result.query)
+        original_lang = _detect_language(question)
+
+        question, had_injection_prefix = _extract_real_question(question)
+        chat_history = _audit_chat_history(chat_history or [])
+
+        if _is_invalid_query(question):
+            prompt_type = PromptType.INVALID_QUERY
+            prompt_vars = {"question": question}
+        elif _is_jailbreak(question):
+            prompt_type = PromptType.INVALID_QUERY
+            prompt_vars = {"question": "Câu hỏi không hợp lệ"}
+        elif _is_chitchat(question):
+            prompt_type = PromptType.CHITCHAT
+            prompt_vars = {"question": question, "chat_history": chat_history}
+        elif not retrieval_result.documents:
+            prompt_type = PromptType.SIMPLE
+            prompt_vars = {"question": question, "chat_history": []}
+        else:
+            context = _build_safe_context(retrieval_result.documents)
+            prompt_type = PromptType.RAG
+            prompt_vars = {
+                "question": question,
+                "context": context,
+                "chat_history": chat_history,
+            }
+
+        prompt = PromptRegistry.get(prompt_type)
+        messages = prompt.invoke(prompt_vars).messages
+
+        raw_answer = await self.llm_client.ainvoke(messages)
+        validated = _validate_output(raw_answer, original_lang)
+
+        if prompt_type == PromptType.RAG and retrieval_result.documents:
+            validated += _build_source_citation(retrieval_result.documents)
+
+        return validated
+
+    async def astream_generate(
+        self,
+        retrieval_result: RetrievalResult,
+        chat_history: List[BaseMessage] = None,
+    ):
+        question = _decode_and_normalize(retrieval_result.query)
+        question, had_injection_prefix = _extract_real_question(question)
+        chat_history = _audit_chat_history(chat_history or [])
+
+        if _is_invalid_query(question):
+            prompt_type = PromptType.INVALID_QUERY
+            prompt_vars = {"question": question}
+        elif _is_jailbreak(question):
+            prompt_type = PromptType.INVALID_QUERY
+            prompt_vars = {"question": "Câu hỏi không hợp lệ"}
+        elif _is_chitchat(question):
+            prompt_type = PromptType.CHITCHAT
+            prompt_vars = {"question": question, "chat_history": chat_history}
+        elif not retrieval_result.documents:
+            prompt_type = PromptType.SIMPLE
+            prompt_vars = {"question": question, "chat_history": []}
+        else:
+            context = _build_safe_context(retrieval_result.documents)
+            prompt_type = PromptType.RAG
+            prompt_vars = {
+                "question": question,
+                "context": context,
+                "chat_history": chat_history,
+            }
+
+        prompt = PromptRegistry.get(prompt_type)
+        messages = prompt.invoke(prompt_vars).messages
+
+        async for chunk in self.llm_client.astream(messages):
+            yield chunk
+
+        if prompt_type == PromptType.RAG and retrieval_result.documents:
+            yield _build_source_citation(retrieval_result.documents)

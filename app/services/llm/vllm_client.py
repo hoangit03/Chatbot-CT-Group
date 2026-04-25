@@ -70,3 +70,32 @@ class VLLMClient(BaseLLMClient):
                     yield chunk.content
         except Exception as e:
             raise LLMException("Lỗi khi stream vLLM", self.model_name, e)
+
+    async def ainvoke(self, messages: List[BaseMessage]) -> str:
+        try:
+            llm = self.get_llm()
+            logger.debug(f"[LLM Async] Gửi prompt với {len(messages)} messages")
+
+            t0 = time.time()
+            response = await llm.ainvoke(messages)
+            t_llm = time.time() - t0
+
+            char_count = len(response.content)
+            token_est = char_count // 4
+            speed = token_est / t_llm if t_llm > 0 else 0
+
+            print(f"  ⏱️  [vLLM Async] Sinh {char_count} ký tự (~{token_est} tokens) trong {t_llm:.2f}s ({speed:.1f} tok/s)")
+            logger.info(f"[LLM Async] Response ({char_count} ký tự) trong {t_llm:.2f}s")
+            return response.content
+        except Exception as e:
+            raise LLMException("Lỗi khi gọi vLLM async", self.model_name, e)
+
+    async def astream(self, messages: List[BaseMessage]):
+        try:
+            llm = self.get_llm()
+            logger.debug(f"[LLM Async Stream] Gửi prompt với {len(messages)} messages")
+            async for chunk in llm.astream(messages):
+                if chunk.content:
+                    yield chunk.content
+        except Exception as e:
+            raise LLMException("Lỗi khi stream vLLM async", self.model_name, e)

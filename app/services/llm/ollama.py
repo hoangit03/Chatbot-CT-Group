@@ -99,3 +99,25 @@ class OllamaLLMClient(BaseLLMClient):
                     yield chunk.content
         except Exception as e:
             raise LLMException("Lỗi khi stream Ollama", self.model_name, e)
+
+    async def ainvoke(self, messages: List[BaseMessage]) -> str:
+        import time
+        try:
+            llm = self.get_llm()
+            t0 = time.time()
+            response = await llm.ainvoke(messages)
+            t_llm = time.time() - t0
+            char_count = len(response.content)
+            logger.info(f"[LLM Async] Nhận được response ({char_count} ký tự) trong {t_llm:.2f}s")
+            return response.content
+        except Exception as e:
+            raise LLMException("Lỗi khi gọi Ollama async", self.model_name, e)
+
+    async def astream(self, messages: List[BaseMessage]):
+        try:
+            llm = self.get_llm()
+            async for chunk in llm.astream(messages):
+                if chunk.content:
+                    yield chunk.content
+        except Exception as e:
+            raise LLMException("Lỗi stream Ollama async", self.model_name, e)

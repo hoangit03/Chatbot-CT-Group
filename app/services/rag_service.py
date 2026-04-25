@@ -478,3 +478,118 @@ Trả về JSON:"""
         print(f"  ──────────────────────────────────────────────")
         print(f"  🏁 TỔNG PIPELINE                    : {t_pipeline:.2f}s")
         print(f"{'='*60}\n")
+
+    async def aanswer(self, query: str, chat_history: List[BaseMessage] = None) -> Dict[str, Any]:
+        from app.services.cache_service import SemanticCache
+        chat_history = chat_history or []
+        skip_reason = _is_skip_rag(query)
+
+        if skip_reason:
+            retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, total_retrieved=0, reranked=False)
+            route = SmartRouteResult(intent="spam", keywords=query, rewritten_query=query, raw_query=query)
+        else:
+            route = self._smart_route(query, chat_history)
+
+            if route.intent == "spam":
+                retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, total_retrieved=0, reranked=False)
+            else:
+                search_query = route.rewritten_query if route.intent == "follow_up" else route.keywords
+                
+                # SEMANTIC CACHE
+                if route.intent == "new_question":
+                    query_embedding = self.retrieval.embedder.embed_query(search_query)
+                    cached_answer = SemanticCache().search_cache(query_embedding)
+                    if cached_answer:
+                        return {
+                            "answer": cached_answer,
+                            "sources": [],
+                            "retrieved_count": 0,
+                            "intent": route.intent,
+                            "rewritten_query": search_query,
+                            "cached": True
+                        }
+                        
+                retrieval_result = self.retrieval.retrieve(query=search_query)
+                retrieval_result.query = query
+
+        safe_history = chat_history
+        if not skip_reason and route.intent in ("new_question", "spam"):
+            safe_history = []
+
+        answer_text = await self.generation.agenerate(retrieval_result, safe_history)
+        
+        # LƯU CACHE
+        if not skip_reason and route.intent == "new_question" and retrieval_result.documents:
+            query_embedding = self.retrieval.embedder.embed_query(search_query)
+            SemanticCache().add_to_cache(query_embedding, answer_text)
+
+        return {
+            "answer": answer_text,
+            "sources": [],
+            "retrieved_count": len(retrieval_result.documents),
+            "intent": route.intent if not skip_reason else "bypass",
+            "rewritten_query": route.rewritten_query if not skip_reason else query,
+            "cached": False
+        }
+
+    async def astream_answer(self, query: str, chat_history: List[BaseMessage] = None):
+        import asyncio
+        from app.services.cache_service import SemanticCache
+        chat_history = chat_history or []
+
+        skip_reason = _is_skip_rag(query)
+
+        if skip_reason:
+            yield f"<!-- thinking -->⚡ Phát hiện: {skip_reason}\n"
+            retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, total_retrieved=0, reranked=False)
+            route = SmartRouteResult(intent="spam", keywords=query, rewritten_query=query, raw_query=query)
+        else:
+            yield "<!-- thinking -->🧠 Đang phân tích câu hỏi...\n"
+            route = self._smart_route(query, chat_history) 
+            yield f"<!-- thinking -->🧠 Phân loại: {route.intent}\n"
+
+            if route.intent == "spam":
+                retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, total_retrieved=0, reranked=False)
+            else:
+                search_query = route.rewritten_query if route.intent == "follow_up" else route.keywords
+                
+                if route.intent == "new_question":
+                    yield "<!-- thinking -->🗂️ Đang kiểm tra Semantic Cache...\n"
+                    query_embedding = self.retrieval.embedder.embed_query(search_query)
+                    cached_answer = SemanticCache().search_cache(query_embedding)
+                    
+                    if cached_answer:
+                        yield f"<!-- thinking -->🟢 HIT CACHE! Tìm thấy câu trả lời cũ.\n"
+                        yield "<!-- clear_thinking -->"
+                        words = cached_answer.split(' ')
+                        for word in words:
+                            yield word + " "
+                            await asyncio.sleep(0.01)
+                        return 
+                
+                yield f"<!-- thinking -->🔍 Tìm kiếm: \"{search_query[:50]}\"\n"
+
+                retrieval_result = self.retrieval.retrieve(query=search_query)
+                retrieval_result.query = query
+
+                n_docs = len(retrieval_result.documents)
+                if n_docs > 0:
+                    yield f"<!-- thinking -->📚 Tìm thấy {n_docs} tài liệu\n"
+                else:
+                    yield f"<!-- thinking -->📭 Không tìm thấy tài liệu phù hợp\n"
+
+        yield "<!-- thinking -->✍️ Đang soạn câu trả lời...\n"
+        yield "<!-- clear_thinking -->"
+
+        safe_history = chat_history
+        if not skip_reason and route.intent in ("new_question", "spam"):
+            safe_history = []
+
+        full_answer = ""
+        async for chunk in self.generation.astream_generate(retrieval_result, safe_history):
+            full_answer += chunk
+            yield chunk
+
+        if not skip_reason and route.intent == "new_question" and retrieval_result.documents:
+            query_embedding = self.retrieval.embedder.embed_query(search_query)
+            SemanticCache().add_to_cache(query_embedding, full_answer)

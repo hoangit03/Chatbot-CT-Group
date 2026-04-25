@@ -84,6 +84,8 @@ async def extract_documents(
             else:
                 # Tiến hành xóa VectorDB cũ để chuẩn bị ghi đè
                 delete_vectors_by_source(base_name)
+                # Xóa Semantic Cache
+                SemanticCache().flush_cache()
         
         # Đánh dấu vào Lịch sử
         registry[doc_name] = True
