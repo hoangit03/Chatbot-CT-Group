@@ -7,8 +7,20 @@ from typing import List, Optional, Tuple
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 
 from app.utils.prompts import PromptRegistry, PromptType
-from app.services.llm.ollama import BaseLLMClient, OllamaLLMClient
+from app.services.llm.base import BaseLLMClient
 from app.services.retrieval import RetrievalResult
+
+
+def _create_llm_client() -> BaseLLMClient:
+    """Factory: chọn LLM client dựa trên LLM_PROVIDER env var."""
+    import os
+    provider = os.getenv("LLM_PROVIDER", "ollama").lower()
+    if provider == "vllm":
+        from app.services.llm.vllm_client import VLLMClient
+        return VLLMClient()
+    else:
+        from app.services.llm.ollama import OllamaLLMClient
+        return OllamaLLMClient()
 
 logger = logging.getLogger(__name__)
 
@@ -378,7 +390,7 @@ class GenerationService:
     """
 
     def __init__(self, llm_client: Optional[BaseLLMClient] = None):
-        self.llm_client = llm_client or OllamaLLMClient()
+        self.llm_client = llm_client or _create_llm_client()
         logger.info("GenerationService (hardened v2) initialized")
 
     def generate(

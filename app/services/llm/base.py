@@ -12,4 +12,6 @@ class BaseLLMClient(ABC):
     def invoke(self, messages: List[BaseMessage]) -> str:
         pass
 
-
+    def stream(self, messages: List[BaseMessage]):
+        """Default stream implementation — override for real streaming."""
+        yield self.invoke(messages)

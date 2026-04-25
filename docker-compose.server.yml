@@ -1,0 +1,169 @@
+# =============================================================
+# Docker Compose — CT-Group Chatbot FULL Server Deployment
+# Server: erpgpu (103.186.101.200)
+# =============================================================
+
+services:
+  # ── LLM Engine (vLLM) ──
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: vllm
+    restart: unless-stopped
+    ipc: host
+    volumes:
+      - vllm_cache:/root/.cache/huggingface
+    environment:
+      HF_HOME: /root/.cache/huggingface
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    command: >
+      --model Qwen/Qwen3-4B-Instruct
+      --host 0.0.0.0
+      --port 8000
+      --max-model-len 8192
+      --gpu-memory-utilization 0.55
+      --max-num-seqs 4
+      --enforce-eager
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      chatbot_network:
+        aliases:
+          - vllm
+
+  # ── Chatbot App (Bot API + ETL API + Workers) ──
+  chatbot_app:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: chatbot_app
+    restart: unless-stopped
+    ipc: host
+    depends_on:
+      vllm:
+        condition: service_healthy
+      chroma_server:
+        condition: service_started
+      rabbitmq_server:
+        condition: service_started
+    volumes:
+      - ./shared_data:/app/shared_data
+    ports:
+      - "7999:7999"
+      - "8001:8001"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - chatbot_network
+
+  # ── PaddleOCR Server ──
+  paddleocr_server:
+    image: paddlepaddle/paddle:3.3.0-gpu-cuda12.6-cudnn9.5
+    container_name: paddleocr_server
+    restart: unless-stopped
+    volumes:
+      - ./:/workspace
+      - ./shared_data/data_input:/data/input
+      - ./shared_data/data_output:/data/output
+      - paddleocr_cache:/root/.paddlex
+    shm_size: '4gb'
+    working_dir: /workspace
+    command: >
+      bash -c "
+        apt-get update && apt-get install -y libgl1 libglib2.0-0 &&
+        pip install 'paddleocr[doc-parser]' python-docx fastapi uvicorn PyMuPDF -q &&
+        echo '=== PaddleOCR FastAPI Starting ===' &&
+        uvicorn app.api_paddle:app --host 0.0.0.0 --port 8080
+      "
+    ports:
+      - "8088:8080"
+    networks:
+      - chatbot_network
+
+  # ── ChromaDB ──
+  chroma_server:
+    image: chromadb/chroma:latest
+    container_name: chroma_server
+    restart: unless-stopped
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+    volumes:
+      - chroma_data:/chroma/chroma
+    ports:
+      - "8002:8000"
+    networks:
+      - chatbot_network
+
+  # ── RabbitMQ ──
+  rabbitmq_server:
+    image: rabbitmq:3-management
+    container_name: rabbitmq_server
+    restart: unless-stopped
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - chatbot_network
+
+  # ── Nginx Reverse Proxy ──
+  nginx:
+    image: nginx:alpine
+    container_name: vllm_nginx
+    restart: unless-stopped
+    depends_on:
+      vllm:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/htpasswd:/etc/nginx/htpasswd:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+    networks:
+      - chatbot_network
+
+  # ── Certbot SSL ──
+  certbot:
+    image: certbot/certbot:latest
+    container_name: certbot
+    restart: unless-stopped
+    entrypoint: /bin/sh
+    command: -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done"
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    networks:
+      - chatbot_network
+
+volumes:
+  vllm_cache:
+  paddleocr_cache:
+  rabbitmq_data:
+  chroma_data:
+
+networks:
+  chatbot_network:
+    driver: bridge
