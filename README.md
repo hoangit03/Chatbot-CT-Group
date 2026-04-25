@@ -6,9 +6,9 @@ Hệ thống RAG (Retrieval-Augmented Generation) chuyên biệt dành cho tài 
 
 ## 🏗️ Kiến Trúc Hệ Thống Hiện Tại (Microservices)
 
-Hệ thống hiện tại được chia làm 2 cụm chính: **ETL Pipeline** (Xử lý dữ liệu) và **Chatbot RAG** (Phản hồi người dùng). Các Microservices được liên kết chặt chẽ qua Message Queue (RabbitMQ), HTTP APIs và Caching (Redis).
+Hệ thống hiện tại được chia làm 2 cụm chính: **ETL Pipeline** (Xử lý dữ liệu) và **Chatbot RAG** (Phản hồi người dùng). Cả hai đều được thiết kế để sử dụng chung các dịch vụ lõi (như TEI Embedding, VectorDB) nhằm tiết kiệm tài nguyên.
 
-### Sơ đồ Kiến Trúc Mới Nhất
+### Sơ đồ Kiến Trúc
 
 ```mermaid
 flowchart TD
@@ -16,92 +16,117 @@ flowchart TD
         User["Người dùng HR (Streamlit)"]
     end
 
-    subgraph API_LAYER["🌐 FastAPI Server (Port 7999 & 8001)"]
-        ChatAPI["Async POST /api/v1/chat"]
-        StreamAPI["Async POST /api/v1/chat/stream"]
-        ExtractAPI["POST /api/v1/extract"]
-        VectorAPI["DELETE /api/v1/vectordb/all"]
+    subgraph API_LAYER["🌐 FastAPI Server"]
+        ChatAPI["Endpoint: /chat hoặc /stream"]
+        ExtractAPI["Endpoint: /extract"]
+        VectorAPI["Endpoint: DELETE /vectordb/all"]
     end
 
-    subgraph CACHE_LAYER["⚡ Semantic Cache (Redis)"]
-        Redis[(Redis Cache)]
-    end
-
-    subgraph RAG_SERVICES["🧠 RAG Services"]
-        RAG["RAG Service (Async Router)"]
-        Retrieval["Retrieval Service"]
-        Generation["Generation Service (Async)"]
+    subgraph CACHE_LAYER["⚡ Semantic Cache"]
+        Redis[(Redis)]
     end
 
     subgraph MICROSERVICES["🚀 AI Microservices"]
-        TEI["TEI Embedder (Port 8081)\nintfloat/e5-large"]
-        LLM_VLLM["vLLM Server (Port 8000)\nQwen2.5-7B-AWQ"]
-        LLM_OLLAMA["Ollama (Local)\nQwen3:1.7b"]
-        OCR["PaddleOCR Server (Port 8088)"]
+        TEI["TEI Embedder (Endpoint)"]
+        LLM["LLM Engine\n(vLLM hoặc Ollama)"]
+    end
+
+    subgraph RAG_SERVICES["🧠 RAG Services"]
+        Router["Smart Router (LLM)"]
+        Retrieval["Retrieval & Reranker"]
+        Gen["Generation"]
     end
 
     subgraph PIPELINE["⚙️ ETL Pipeline (RabbitMQ)"]
-        MQ{"RabbitMQ"}
-        W1["OCR Worker"]
-        W2["ToMD Worker"]
+        MQ{"RabbitMQ Queue"}
+        W1["OCR Worker (PDF)"]
+        W2["ToMD Worker (Not PDF)"]
         WC["Cleaning Worker"]
         W3["Chunking Worker"]
         W4["Embedding Worker"]
     end
 
-    VDB[("ChromaDB\n(Vector Store)")]
+    VDB[("VectorDB\n(ChromaDB)")]
 
     %% Khối Chatbot
-    User <-->|"1. Chat/Stream"| ChatAPI
-    ChatAPI -->|"2. Check Intent"| RAG
-    RAG -->|"3a. Check Cache"| Redis
-    RAG -->|"3b. Call TEI (Miss Cache)"| TEI
-    RAG -->|"4. Vector Search"| VDB
-    RAG -->|"5. Generate Answer"| Generation
-    Generation --> LLM_VLLM
-    Generation -.->|"Hoặc"| LLM_OLLAMA
-    RAG -->|"6. Save Cache"| Redis
-
-    %% Khối Upload ETL
-    User -->|"Upload File"| ExtractAPI
-    ExtractAPI -->|"Publish Task"| MQ
-    ExtractAPI -->|"Xóa Cache / Vector (Ghi đè)"| Redis & VDB
+    User <-->|"1. Hỏi đáp"| ChatAPI
+    ChatAPI -->|"2. Phân tích ngữ cảnh"| Router
     
-    MQ --> W1 & W2
-    W1 --> OCR
-    W2 --> WC --> W3 --> W4
-    W4 -->|"Batch Vectors"| TEI
-    W4 -->|"Lưu Trữ"| VDB
+    Router -->|"Intent: new_question"| Redis
+    Redis -- "Hit Cache" --> ChatAPI
+    Redis -- "Miss Cache" --> TEI_Chat["Gọi TEI Embedding"]
+    TEI_Chat --> Retrieval
+    
+    Router -->|"Intent: follow_up"| TEI_Chat
+    
+    Router -->|"Intent: spam"| Gen_Spam["Bỏ qua Retrieval/Reranker"]
+    
+    Retrieval --> VDB
+    VDB --> Gen
+    Gen_Spam --> Gen
+    Gen --> LLM
+    LLM --> ChatAPI
+    Gen -.->|"Lưu Cache (nếu new_question)"| Redis
+
+    %% Khối ETL
+    User -->|"Upload File"| ExtractAPI
+    ExtractAPI -->|"Điều phối"| MQ
+    ExtractAPI -.->|"Xóa Cache / Xóa Vector Cũ (nếu ghi đè)"| Redis & VDB
+    
+    MQ -->|"Nếu là PDF"| W1
+    MQ -->|"Nếu KHÔNG phải PDF"| W2
+    W1 -->|"Tạo MD"| WC
+    W2 -->|"Tạo MD"| WC
+    WC --> W3
+    W3 --> W4
+    W4 -->|"Gọi Endpoint TEI"| TEI
+    TEI -->|"Batch Vectors"| VDB
 ```
 
----
+### 1. Luồng Hoạt Động Của ChatBot
+Khi người dùng đặt câu hỏi:
+1. Yêu cầu được gửi vào 1 trong 2 endpoint là `/stream` hoặc `/chat`.
+2. **Smart Router (LLM)** sẽ phân tích câu hỏi để xác định ý định (Intent):
+   - **Nếu là `new_question`:** Hệ thống kiểm tra Semantic Cache (Redis). 
+     - Nếu có trong cache -> Trả luôn kết quả cho người dùng. 
+     - Nếu chưa có -> Hệ thống gọi qua endpoint **TEI** để embedding câu hỏi -> Chạy qua Retrieval (Tìm kiếm VectorDB) và Reranker (Sắp xếp lại) -> Đưa ngữ cảnh vào LLM để sinh câu trả lời -> Trả kết quả cho người dùng và lưu vào Cache.
+   - **Nếu là `follow_up`:** Bỏ qua bước check Cache. Hệ thống gọi ngay TEI để embedding -> Thực hiện full pipeline RAG (Retrieval, Reranker, LLM).
+   - **Nếu là `spam`:** Hệ thống bỏ qua hoàn toàn phần Retrieval và Reranker. Câu hỏi được đưa thẳng vào LLM để LLM trả kết quả là "không có tài liệu" -> Trả kết quả lại cho người dùng.
 
-## 🛠️ Phân Tích Các Thành Phần Cốt Lõi
+### 2. Luồng Hoạt Động Của ETL (Nạp Dữ Liệu)
+Khi quản trị viên Upload tài liệu mới:
+1. Tài liệu được đưa vào Queue của **RabbitMQ** để điều phối.
+2. Dựa trên định dạng file:
+   - Nếu **không phải là PDF** (Word, Excel...) -> Đưa vào `to_md_worker`.
+   - Nếu **là PDF** -> Đưa vào `ocr_worker`.
+3. Sau khi file được chuyển đổi thành Markdown (.md) -> Đưa vào `cleaning_worker` để làm sạch văn bản.
+4. Chuyển sang `chunking_worker` để băm nhỏ theo cơ chế tùy chỉnh.
+5. Cuối cùng, `embedding_worker` tiếp nhận các chunks -> Gọi vào **Endpoint TEI** để chuyển thành Vector -> Lưu vào **VectorDB** (ChromaDB).
 
-1. **Semantic Cache (Redis):** Thay vì phải chạy lại Embedding và sinh text bằng LLM cho các câu hỏi trùng lặp, Semantic Cache lưu lại Vector của câu hỏi. Khi độ tương đồng (Cosine Similarity) > 95%, hệ thống sẽ móc câu trả lời từ Cache trả về lập tức (Độ trễ <50ms). Khi người dùng **Ghi đè File** hoặc **Xóa DB**, Cache sẽ tự động bị dọn dẹp để đảm bảo thông tin luôn mới nhất.
-
-2. **TEI (Text Embeddings Inference):** Microservice siêu tốc của HuggingFace viết bằng Rust. Đứng ra gánh vác việc tạo Vector cho cả Chatbot và ETL Worker. Giúp giải phóng VRAM (do model không bị load 2 lần vào ứng dụng) và tăng tốc độ xử lý nhờ FlashAttention.
-
-3. **Luồng Async Hoàn Toàn:** Từ Endpoint `/chat` cho đến khi gọi LLM client (`vllm_client.py`), mọi hàm đều là `async def`, `ainvoke`, `astream`. Giúp server đáp ứng hàng chục Request cùng lúc mà không bị nghẽn (Block).
+### 3. Các Cơ Chế An Toàn Khi Upload File
+Để đảm bảo tính nhất quán của dữ liệu, hệ thống tự động xử lý các tình huống xung đột:
+- **Khi xóa toàn bộ dữ liệu (Wipe DB):** Hệ thống không chỉ xóa Vector trong ChromaDB mà còn **xóa luôn file `file_registry.json`** (lịch sử nạp file) để tránh lỗi trùng lặp ảo, và đặc biệt là **xóa luôn toàn bộ Semantic Cache** trong Redis để LLM không bị "ảo giác" do nhớ nhầm kiến thức cũ.
+- **Khi nạp một file đã tồn tại:** Hệ thống sẽ chặn lại và hỏi xác nhận trên giao diện: *Bạn đang muốn update kiến thức hay là bạn nhầm lẫn?*
+  - Nếu chọn Update Kiến Thức -> Hệ thống sẽ **xóa toàn bộ data trong VectorDB** của `filename` đó, đồng thời **xóa Cache**, sau đó tiến hành nạp file mới vào hệ thống.
+  - Nếu Không -> Hệ thống báo lỗi là bạn trùng file và dừng lại.
 
 ---
 
 ## 🚀 Hướng Dẫn Khởi Chạy
 
-Do đặc thù môi trường Local (máy tính cá nhân) và Production (Server lớn) khác nhau về mặt phần cứng (VRAM), hệ thống được cấu hình để chuyển đổi linh hoạt thông qua file `.env`.
+Do đặc thù môi trường Local (máy tính cá nhân) và Production (Server lớn) khác nhau về mặt phần cứng (VRAM), hệ thống được cấu hình để chuyển đổi linh hoạt thông qua file môi trường `.env`.
 
-### Phương Án 1: Chạy Local (Cho Dev / Máy cá nhân VRAM thấp)
-Sử dụng **Ollama** làm backend LLM và chạy Embedding trực tiếp bằng thư viện `sentence-transformers` trên CPU/GPU cá nhân.
+### Phương Án 1: Chạy Local (Cho Dev / Máy cá nhân)
+Sử dụng **Ollama** làm backend LLM và chạy trực tiếp.
 
 1. **Cấu hình `.env`:**
    ```env
    # Chọn provider là ollama
    LLM_PROVIDER=ollama
-   MODEL_LLM=qwen3:1.7b
+   MODEL_LLM=qwen3:1.7b # Có thể đổi sang model lớn hơn tuỳ VRAM
    
    # Tắt TEI nếu muốn chạy bằng thư viện nội bộ (Bằng cách xóa/comment dòng TEI đi)
-   # Nếu bật TEI thì dùng: TEI_EMBEDDER_URL=http://localhost:8081
-   # TEI_EMBEDDER_URL=http://localhost:8081
+   # Nếu muốn bật TEI ở Local thì dùng: TEI_EMBEDDER_URL=http://localhost:8081
    
    # Redis cho Semantic Cache
    REDIS_HOST=localhost
@@ -127,15 +152,17 @@ Sử dụng **Ollama** làm backend LLM và chạy Embedding trực tiếp bằn
 4. **Chạy Background Workers (Mở các terminal khác nhau):**
    ```bash
    python -m pipeline.workers.ocr_worker
+   python -m pipeline.workers.to_md_worker
+   python -m pipeline.workers.cleaning_worker
    python -m pipeline.workers.chunking_worker
    python -m pipeline.workers.embedding_worker
-   # ...
+   # Chạy đầy đủ các worker tham gia vào luồng
    ```
 
 ---
 
-### Phương Án 2: Chạy Server Production (VRAM lớn)
-Sử dụng **vLLM** làm backend LLM (hỗ trợ Continuous Batching) và dùng **TEI** làm Server Embedding. Mọi thứ được Container hóa 100%.
+### Phương Án 2: Chạy Server Production
+Sử dụng **vLLM** làm backend LLM (tối ưu thông lượng lớn) và dùng **TEI** làm Microservice Embedding. Mọi thứ được Container hóa 100%.
 
 1. **Cấu hình `.env.server`:**
    ```env
@@ -143,26 +170,27 @@ Sử dụng **vLLM** làm backend LLM (hỗ trợ Continuous Batching) và dùng
    MODEL_LLM=Qwen/Qwen2.5-7B-Instruct-AWQ
    VLLM_BASE_URL=http://vllm:8000/v1
    
-   # Dùng Microservice TEI chung mạng Docker
+   # Kết nối Microservice TEI chung mạng Docker
    TEI_EMBEDDER_URL=http://tei_embedder:80
    
-   # Dùng Redis chung mạng Docker
+   # Kết nối Redis chung mạng Docker
    REDIS_HOST=redis_server
    REDIS_PORT=6379
    ```
 
-2. **Khởi Động Toàn Hệ Thống Bằng Docker Compose Server:**
+2. **Kiểm soát VRAM cho vLLM:**
+   Nếu VRAM bị giới hạn, trong file `docker-compose.server.yml`, điều chỉnh cấu hình của vLLM để tránh lỗi Out-Of-Memory. Ví dụ:
+   ```yaml
+   command: >
+     --model Qwen/Qwen2.5-7B-Instruct-AWQ
+     --max-model-len 10240
+     --gpu-memory-utilization 0.45 
+     --max-num-seqs 8
+   ```
+
+3. **Khởi Động Toàn Hệ Thống Bằng Docker Compose Server:**
    ```bash
-   # File docker-compose.server.yml chứa toàn bộ các service:
-   # vLLM, TEI, Chatbot App, PaddleOCR, Chroma, RabbitMQ, Redis, Nginx...
-   
    docker-compose -f docker-compose.server.yml up -d --build
    ```
 
-Lúc này, bạn không cần phải chạy thủ công các Worker bằng lệnh `python -m...` nữa. File `Dockerfile.server` đã tích hợp `supervisord` để tự động khởi động và giám sát FastAPI cùng lúc với tất cả các Workers bên trong Container `chatbot_app`.
-
----
-
-## 🔒 Cơ Chế An Toàn & Self-Healing
-- **Ghi đè File (Force Update):** Khi upload file trùng tên, UI Streamlit sẽ hiện cảnh báo. Nếu User xác nhận, luồng API sẽ tự gọi hàm xóa chính xác các Vector của file cũ trong ChromaDB (theo `metadata`), đồng thời `Flush` toàn bộ Semantic Cache trong Redis để hệ thống không ảo giác với nội dung cũ.
-- **Bypass RAG (Smart Router):** Bất kỳ câu hỏi vô nghĩa (Spam), hoặc chào hỏi (Chitchat) đều được bắt lại bằng Regex và Smart Router. Hệ thống trả lời ngay lập tức mà không cần chọc vào VectorDB hay kích hoạt luồng LLM phức tạp, đảm bảo không lãng phí token và tài nguyên Server.
+Lúc này, bạn không cần phải chạy thủ công các Worker bằng lệnh `python -m...` nữa. File `Dockerfile.server` đã tích hợp `supervisord` để tự động khởi động và giám sát FastAPI cùng lúc với tất cả các Workers bên trong Container `chatbot_app`. Toàn bộ luồng từ ETL đến Chatbot sẽ chạy ngầm và giao tiếp qua RabbitMQ và Redis hoàn toàn tự động.
