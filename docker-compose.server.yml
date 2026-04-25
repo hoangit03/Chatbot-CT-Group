@@ -17,12 +17,12 @@ services:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     command: >
-      --model Qwen/Qwen2.5-3B-Instruct
+      --model Qwen/Qwen2.5-7B-Instruct-AWQ
       --host 0.0.0.0
       --port 8000
-      --max-model-len 8192
-      --gpu-memory-utilization 0.55
-      --max-num-seqs 4
+      --max-model-len 10240
+      --gpu-memory-utilization 0.8
+      --max-num-seqs 16
       --enforce-eager
     ports:
       - "127.0.0.1:8000:8000"
@@ -158,11 +158,24 @@ services:
     networks:
       - chatbot_network
 
+  # ── Redis Cache ──
+  redis_server:
+    image: redis:alpine
+    container_name: redis_server
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - chatbot_network
+
 volumes:
   vllm_cache:
   paddleocr_cache:
   rabbitmq_data:
   chroma_data:
+  redis_data:
 
 networks:
   chatbot_network:

@@ -89,3 +89,25 @@ def delete_all_vectors(collection_name: str = "hr_policies"):
         return {"status": "success", "message": f"Đã Wipe thành công {len(ids)} dữ liệu Vector trong '{collection_name}'."}
     except Exception as e:
         return {"status": "error", "message": f"Lỗi khi xóa Collection '{collection_name}': {str(e)}"}
+
+def delete_vectors_by_source(source_file: str, collection_name: str = "hr_policies"):
+    """
+    Xóa toàn bộ Vector có metadata 'source_file' khớp với giá trị truyền vào.
+    Dùng khi người dùng chọn Ghi đè file.
+    """
+    try:
+        chroma_client = get_chroma_client()
+        collection = chroma_client.get_or_create_collection(name=collection_name)
+        
+        # Truy vấn tìm các ID có source_file tương ứng
+        all_data = collection.get(where={"source_file": source_file}, include=[])
+        ids_to_delete = all_data.get("ids", [])
+        
+        if not ids_to_delete:
+            return {"status": "success", "message": f"Không tìm thấy dữ liệu cũ của file '{source_file}' trong VectorDB để xóa."}
+            
+        collection.delete(ids=ids_to_delete)
+        return {"status": "success", "message": f"Đã xóa thành công {len(ids_to_delete)} chunk của file '{source_file}' khỏi VectorDB."}
+    except Exception as e:
+        return {"status": "error", "message": f"Lỗi khi xóa vector theo source_file '{source_file}': {str(e)}"}
+

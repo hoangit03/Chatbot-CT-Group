@@ -3,11 +3,13 @@ import glob
 import shutil
 import hashlib
 import json
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
 from app.services.broker_service import ocr_publisher, to_md_publisher
+from pipeline.engines.vectordb_engine import delete_vectors_by_source
+from app.services.cache_service import SemanticCache
 
 load_dotenv()
 
@@ -39,11 +41,14 @@ def _save_registry(registry):
 from typing import List
 
 @router.post("/")
-async def extract_documents(files: List[UploadFile] = File(...)):
+async def extract_documents(
+    files: List[UploadFile] = File(...),
+    force_update: bool = Form(False)
+):
     """
     Endpoint (Auto-Router) để nhận NHIỀU files.
     Tự động phân loại luồng OCR cho PDF hoặc ToMD cho Word/Excel/MSG.
-    Tích hợp lớp khiên chắn chống trùng lặp từng files bằng mã băm SHA-256.
+    Tích hợp lớp khiên chắn chống trùng lặp từng files.
     """
     allowed_ocr = ['pdf']
     allowed_md = ['doc', 'docx', 'xls', 'xlsx', 'msg', 'pptx', 'ppt']
@@ -69,12 +74,16 @@ async def extract_documents(files: List[UploadFile] = File(...)):
         
         # 1. Kiểm tra trùng lặp (Chỉ quét Tên File)
         if doc_name in registry:
-            results.append({
-                "file_name": doc_name, 
-                "status": "failed", 
-                "message": f"Từ chối hệ thống: Tên files '{doc_name}' đã từng được tải lên trước đây."
-            })
-            continue
+            if not force_update:
+                results.append({
+                    "file_name": doc_name, 
+                    "status": "duplicate_warning", 
+                    "message": f"Từ chối hệ thống: Tên files '{doc_name}' đã từng được tải lên trước đây."
+                })
+                continue
+            else:
+                # Tiến hành xóa VectorDB cũ để chuẩn bị ghi đè
+                delete_vectors_by_source(base_name)
         
         # Đánh dấu vào Lịch sử
         registry[doc_name] = True

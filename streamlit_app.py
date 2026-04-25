@@ -41,7 +41,7 @@ def log_upload(file_name, status, message=""):
 # =========================
 # API FUNCTIONS
 # =========================
-def upload_and_extract(files):
+def upload_and_extract(files, force_update=False):
     try:
         # build multipart đúng chuẩn cho FastAPI List[UploadFile]
         multipart_files = [
@@ -51,16 +51,21 @@ def upload_and_extract(files):
 
         # log trước khi gửi
         for file in files:
-            log_upload(file.name, "⏳ Uploading")
+            log_upload(file.name, "⏳ Uploading" if not force_update else "⏳ Force Uploading")
+
+        # Thêm cờ force_update
+        data_payload = {"force_update": "true"} if force_update else {"force_update": "false"}
 
         res = requests.post(
             f"{BASE_URL}/extract",
             files=multipart_files,
+            data=data_payload,
             timeout=300
         )
 
         if res.status_code == 200:
             data = res.json()
+            duplicate_files = []
 
             for result in data.get("results", []):
                 file_name = result["file_name"]
@@ -69,8 +74,17 @@ def upload_and_extract(files):
 
                 if status == "queued":
                     log_upload(file_name, "📥 Queued", message)
+                elif status == "duplicate_warning":
+                    log_upload(file_name, "⚠️ Duplicate", message)
+                    for f in files:
+                        if f.name == file_name:
+                            duplicate_files.append(f)
+                            break
                 else:
                     log_upload(file_name, "❌ Failed", message)
+            
+            if duplicate_files:
+                st.session_state.duplicate_files = duplicate_files
         else:
             st.sidebar.error(res.text)
 
@@ -158,6 +172,18 @@ if st.sidebar.button("🚀 Upload & Extract", disabled=st.session_state.is_uploa
         st.session_state.is_uploading = False
 
         st.sidebar.info("📌 File đã vào queue. Vui lòng đợi xử lý trước khi hỏi.")
+
+# =========================
+# DUPLICATE WARNING UI
+# =========================
+if "duplicate_files" in st.session_state and st.session_state.duplicate_files:
+    st.sidebar.warning(f"⚠️ Phát hiện {len(st.session_state.duplicate_files)} file đã tồn tại. Bạn muốn cập nhật dữ liệu mới (Ghi đè) chứ?")
+    if st.sidebar.button("✅ Xác nhận Cập nhật (Ghi đè)"):
+        st.session_state.is_uploading = True
+        upload_and_extract(st.session_state.duplicate_files, force_update=True)
+        st.session_state.is_uploading = False
+        st.session_state.duplicate_files = None
+        st.rerun()
 
 # =========================
 # SIDEBAR - LOG

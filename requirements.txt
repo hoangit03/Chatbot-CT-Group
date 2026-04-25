@@ -38,3 +38,4 @@ pandas
 langchain-permit
 rank_bm2c5
 langchain-openai
+redis
