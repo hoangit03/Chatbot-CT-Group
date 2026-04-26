@@ -219,3 +219,31 @@ docker logs -f vllm
 # Xem log của TEI Embedder để kiểm tra tốc độ ép kiểu Vector
 docker logs -f tei_embedder
 ```
+
+### 5. Danh Sách Endpoint Mở Cổng Ra Internet (Reverse Proxy Nginx)
+Hệ thống Nginx (Reverse Proxy + Auto SSL) đã được cấu hình sẵn để public các dịch vụ ra bên ngoài một cách an toàn qua HTTPS.
+
+**Domain gốc trên Server hiện tại là:** `https://llmerp.hextech.vn`
+
+Dưới đây là danh sách các Endpoint bạn có thể dùng để tích hợp vào Frontend, App hoặc gọi qua Postman:
+
+#### 1. API Chatbot Chính (Bot API)
+Nginx đã được cài đặt bắt mọi request bắt đầu bằng `/api/` và đẩy vào Bot API (Port nội bộ `7999`).
+*(Bạn dùng endpoint này để gắn vào giao diện Web/App cho người dùng cuối)*
+- **Health Check:** `GET https://llmerp.hextech.vn/api/v1/health`
+- **Chat (Stream/Block):** `POST https://llmerp.hextech.vn/api/v1/chat`
+
+#### 2. API vLLM Gốc (OpenAI Compatible)
+Nginx bắt mọi request bắt đầu bằng `/v1/` và đẩy thẳng vào vLLM (Port nội bộ `8000`).
+*(Bạn dùng endpoint này nếu muốn test trực tiếp model Qwen2.5-7B-AWQ mà không qua logic RAG của hệ thống)*
+- **Liệt kê Model:** `GET https://llmerp.hextech.vn/v1/models`
+- **Chat Completions:** `POST https://llmerp.hextech.vn/v1/chat/completions`
+
+#### 3. API Xử Lý Dữ Liệu (ETL API)
+> [!WARNING]
+> **Lưu ý:** Do cả Bot API và ETL API của bạn đều dùng chung prefix là `/api/v1/` trong code, nên Nginx đang ưu tiên đẩy `/api/` cho Bot API.
+
+Để sử dụng API ETL tải tài liệu lên, bạn gọi trực tiếp qua IP Server (Port `8001` - Không có HTTPS):
+- **Upload Document:** `POST http://103.186.101.200:8001/api/v1/extract`
+- **VectorDB Info:** `GET http://103.186.101.200:8001/api/v1/vectordb/info`
+- **Xóa All VectorDB:** `DELETE http://103.186.101.200:8001/api/v1/vectordb/all`
