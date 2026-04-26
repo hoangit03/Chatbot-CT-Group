@@ -50,34 +50,42 @@ def classify_markdown(md_text: str) -> str:
         return "> [!NOTE]\n> **Category:** Quy định / Chính sách / Thông báo\n\n"
 
 # ==========================================
-# MODULE 2: PPT TO PDF (Windows only)
+# MODULE 2: PPT TO PDF (Cross-platform)
 # ==========================================
 def convert_ppt_xplatform(input_path: str, output_dir: str) -> str:
-    if sys.platform != 'win32':
-        print("[ToMD Engine] PPT convert chỉ hỗ trợ Windows.")
-        return None
-    import win32com.client
-    safe_temp_in = os.path.join(output_dir, "safe_temp_convert_ppt.pptx")
-    safe_temp_out = os.path.join(output_dir, "safe_temp_convert_ppt.pdf")
     base_name = os.path.splitext(os.path.basename(input_path))[0]
     final_output_path = os.path.join(output_dir, base_name + ".pdf")
-    try:
-        shutil.copy2(input_path, safe_temp_in)
-        powerpoint = win32com.client.Dispatch("PowerPoint.Application")
-        powerpoint.Visible = 1
-        presentation = powerpoint.Presentations.Open(os.path.abspath(safe_temp_in), WithWindow=False)
-        presentation.SaveAs(os.path.abspath(safe_temp_out), 32)
-        presentation.Close()
-        powerpoint.Quit()
-        if os.path.exists(safe_temp_out):
-            shutil.move(safe_temp_out, final_output_path)
-        try: os.remove(safe_temp_in)
-        except: pass
-        print(f"[win32com] PPT -> PDF: {final_output_path}")
-        return final_output_path
-    except Exception as e:
-        print(f"[Engine Error] PPT Convert Fail: {e}")
-        return None
+    
+    if sys.platform == 'win32':
+        import win32com.client
+        safe_temp_in = os.path.join(output_dir, "safe_temp_convert_ppt.pptx")
+        safe_temp_out = os.path.join(output_dir, "safe_temp_convert_ppt.pdf")
+        try:
+            shutil.copy2(input_path, safe_temp_in)
+            powerpoint = win32com.client.Dispatch("PowerPoint.Application")
+            powerpoint.Visible = 1
+            presentation = powerpoint.Presentations.Open(os.path.abspath(safe_temp_in), WithWindow=False)
+            presentation.SaveAs(os.path.abspath(safe_temp_out), 32)
+            presentation.Close()
+            powerpoint.Quit()
+            if os.path.exists(safe_temp_out):
+                shutil.move(safe_temp_out, final_output_path)
+            try: os.remove(safe_temp_in)
+            except: pass
+            print(f"[win32com] PPT -> PDF: {final_output_path}")
+            return final_output_path
+        except Exception as e:
+            print(f"[Engine Error] PPT Convert Fail: {e}")
+            return None
+    else:
+        try:
+            cmd = ["libreoffice", "--headless", "--convert-to", "pdf", input_path, "--outdir", output_dir]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"[libreoffice] PPT -> PDF: {final_output_path}")
+            return final_output_path
+        except Exception as e:
+            print(f"[Engine Error] LibreOffice PPT Fail: {e}")
+            return None
 
 # ==========================================
 # MODULE 3: DOC -> DOCX (Cross-platform)

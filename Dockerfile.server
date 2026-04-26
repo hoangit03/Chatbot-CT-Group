@@ -10,15 +10,15 @@ FROM nvidia/cuda:12.6.0-runtime-ubuntu22.04
 RUN apt-get update && apt-get install -y \
     python3.11 python3.11-venv python3-pip \
     libgl1 libglib2.0-0 \
-    curl git supervisor \
+    curl git supervisor libreoffice \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # --- Python dependencies ---
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir langchain-openai
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
 
 # --- Copy application source ---
 COPY app/ ./app/
