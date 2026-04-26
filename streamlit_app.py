@@ -6,7 +6,7 @@ from datetime import datetime
 # CONFIG
 # =========================
 BASE_URL_CHAT = "http://localhost:7999/api/v1"
-BASE_URL = "http://localhost:8000/api/v1"
+BASE_URL = "http://localhost:8001/api/v1"
 
 MAX_FILES = 10
 
