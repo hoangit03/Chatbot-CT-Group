@@ -190,6 +190,10 @@ Sử dụng **vLLM** làm backend LLM (tối ưu thông lượng lớn) và dùn
 
 3. **Khởi Động Toàn Hệ Thống Bằng Docker Compose Server:**
    ```bash
+   # Dừng toàn bộ hệ thống 
+   docker compose -f docker-compose.server.yml down
+      
+   # Build và khởi động toàn bộ hệ thống
    docker-compose -f docker-compose.server.yml up -d --build
    ```
 
@@ -199,8 +203,6 @@ Lúc này, bạn không cần phải chạy thủ công các Worker bằng lện
 Để theo dõi quá trình hoạt động của các dịch vụ đang chạy ngầm trên Server, bạn có thể sử dụng các lệnh Docker sau:
 
 ```bash
-# Dừng toàn bộ hệ thống 
-docker compose -f docker-compose.server.yml down
 
 # Xem log của toàn bộ hệ thống (cuộn liên tục theo thời gian thực)
 docker-compose -f docker-compose.server.yml logs -f
