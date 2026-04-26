@@ -19,7 +19,7 @@ def get_chroma_client():
         _chroma_client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
     return _chroma_client
 
-def get_all_vectors(collection_name: str = "hr_policies"):
+def get_all_vectors(collection_name: str = "general"):
     """
     Lấy toàn bộ dữ liệu (trừ chuỗi Vector float quá nặng) từ ChromaDB
     """

@@ -25,15 +25,15 @@ chroma_host = os.getenv("CHROMA_HOST", "localhost")
 chroma_port = int(os.getenv("CHROMA_PORT", 8002))
 chroma_client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
 
-def get_collection():
+def get_collection(name: str = "general"):
     return chroma_client.get_or_create_collection(
-        name="hr_policies",
+        name=name,
         metadata={"hnsw:space": "cosine"}
     )
 
-def run_embedding_pipeline(json_file_name: str) -> bool:
+def run_embedding_pipeline(json_file_name: str, collection_name: str = "general") -> bool:
     """Đọc JSON Chunks và lưu cất vào ChromaDB."""
-    collection = get_collection()
+    collection = get_collection(collection_name)
     json_path = os.path.join(CHUNKS_DIR, json_file_name)
     if not os.path.exists(json_path):
         print(f"[Embedding Engine] Lỗi: Không tìm thấy file JSON {json_file_name}")
