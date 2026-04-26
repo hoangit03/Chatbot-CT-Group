@@ -38,6 +38,6 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
     CMD curl -f http://localhost:7999/api/v1/health || exit 1
 
-EXPOSE 7999 8001 8501
+EXPOSE 7999 8001 8501 8003
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

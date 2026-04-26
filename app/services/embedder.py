@@ -3,6 +3,7 @@ from typing import List, Optional
 from dotenv import load_dotenv 
 
 from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpointEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_core.embeddings import Embeddings
 from langchain_core.documents import Document
 
@@ -23,11 +24,14 @@ class Embedder:
     def _initialize(self):
         """Chỉ chạy 1 lần khi tạo instance đầu tiên"""
         self.tei_url = os.getenv("TEI_EMBEDDER_URL")
-        
         if self.tei_url:
-            print(f"[Embedder] Khởi tạo kết nối tới TEI Microservice tại: {self.tei_url}")
-            self._embedding_model = HuggingFaceEndpointEmbeddings(
-                model=self.tei_url
+            print(f"[Embedder] Khởi tạo kết nối tới Custom Embedder API tại: {self.tei_url}")
+            self.model_name = os.getenv("EMBEDDING_MODEL_GPU", "intfloat/multilingual-e5-large")
+            self._embedding_model = OpenAIEmbeddings(
+                model=self.model_name,
+                openai_api_base=self.tei_url,
+                openai_api_key="empty",
+                check_embedding_ctx_length=False
             )
         else:
             self.device = os.getenv("EMBED_DEVICE", "cuda").lower()

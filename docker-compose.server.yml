@@ -65,6 +65,7 @@ services:
       - "7999:7999"
       - "8001:8001"
       - "8501:8501"
+      - "8003:8003"
     deploy:
       resources:
         reservations:
@@ -171,27 +172,7 @@ services:
     networks:
       - chatbot_network
 
-  # ── TEI Embedder Server ──
-  tei_embedder:
-    image: ghcr.io/huggingface/text-embeddings-inference:1.5
-    container_name: tei_embedder
-    restart: unless-stopped
-    volumes:
-      - tei_cache:/data
-    command: --model-id intfloat/multilingual-e5-large
-    ports:
-      - "8081:80"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    networks:
-      chatbot_network:
-        aliases:
-          - tei_embedder
+
 
 volumes:
   vllm_cache:
