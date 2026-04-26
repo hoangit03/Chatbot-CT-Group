@@ -24,6 +24,9 @@ RUN pip install --no-cache-dir uv && \
 COPY app/ ./app/
 COPY pipeline/ ./pipeline/
 COPY .env .env
+COPY streamlit_app.py .
+
+ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
 # --- Shared data directories ---
 RUN mkdir -p /app/shared_data/data_input /app/shared_data/data_output
@@ -35,6 +38,6 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
     CMD curl -f http://localhost:7999/api/v1/health || exit 1
 
-EXPOSE 7999 8001
+EXPOSE 7999 8001 8501
 
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
