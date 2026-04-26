@@ -173,7 +173,7 @@ services:
 
   # ── TEI Embedder Server ──
   tei_embedder:
-    image: ghcr.io/huggingface/text-embeddings-inference:1.2
+    image: ghcr.io/huggingface/text-embeddings-inference:1.5
     container_name: tei_embedder
     restart: unless-stopped
     volumes:
