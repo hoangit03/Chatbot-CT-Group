@@ -194,3 +194,23 @@ Sử dụng **vLLM** làm backend LLM (tối ưu thông lượng lớn) và dùn
    ```
 
 Lúc này, bạn không cần phải chạy thủ công các Worker bằng lệnh `python -m...` nữa. File `Dockerfile.server` đã tích hợp `supervisord` để tự động khởi động và giám sát FastAPI cùng lúc với tất cả các Workers bên trong Container `chatbot_app`. Toàn bộ luồng từ ETL đến Chatbot sẽ chạy ngầm và giao tiếp qua RabbitMQ và Redis hoàn toàn tự động.
+
+### 4. Xem Log Hệ Thống (Monitoring)
+Để theo dõi quá trình hoạt động của các dịch vụ đang chạy ngầm trên Server, bạn có thể sử dụng các lệnh Docker sau:
+
+```bash
+# Xem log của toàn bộ hệ thống (cuộn liên tục theo thời gian thực)
+docker-compose -f docker-compose.server.yml logs -f
+
+# Xem log riêng nhưng phần quan trong nhất 
+docker compose -f docker-compose.server.yml logs -f chatbot_app vllm tei_embedder redis_server
+
+# Xem log riêng của App chính (Hiển thị luồng Chatbot, Intent, RAG và các Workers)
+docker logs -f chatbot_app
+
+# Xem log riêng của LLM Engine (vLLM) để theo dõi tốc độ token và kiểm tra VRAM
+docker logs -f vllm
+
+# Xem log của TEI Embedder để kiểm tra tốc độ ép kiểu Vector
+docker logs -f tei_embedder
+```
