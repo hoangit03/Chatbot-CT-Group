@@ -36,6 +36,6 @@ ragas
 datasets
 pandas
 langchain-permit
-rank_bm2c5
+rank_bm25
 langchain-openai
 redis
