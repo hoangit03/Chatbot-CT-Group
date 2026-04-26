@@ -33,6 +33,7 @@ mammoth
 markdownify
 tabulate
 ragas
+pyarrow<24.0.0
 datasets
 pandas
 langchain-permit
