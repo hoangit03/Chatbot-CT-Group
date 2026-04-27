@@ -540,18 +540,24 @@ Trả về JSON:"""
         skip_reason = _is_skip_rag(query)
 
         if skip_reason:
+            print(f"\n  ⚡ [Pre-RAG] Bypass RAG → Lý do: {skip_reason} | Query: \"{query}\"")
             yield f"<!-- thinking -->⚡ Phát hiện: {skip_reason}\n"
             retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, total_retrieved=0, reranked=False)
             route = SmartRouteResult(intent="spam", keywords=query, rewritten_query=query, raw_query=query)
         else:
             yield "<!-- thinking -->🧠 Đang phân tích câu hỏi...\n"
+            t_rw = time.time()
             route = self._smart_route(query, chat_history) 
-            yield f"<!-- thinking -->🧠 Phân loại: {route.intent}\n"
+            t_route = time.time() - t_rw
+            
+            yield f"<!-- thinking -->🧠 Phân loại: {route.intent} ({t_route:.1f}s)\n"
 
             if route.intent == "spam":
+                print(f"  🚫 [Smart Router] SPAM → Bypass RAG")
                 retrieval_result = RetrievalResult(documents=[], query=query, top_k=0, total_retrieved=0, reranked=False)
             else:
                 search_query = route.rewritten_query if route.intent == "follow_up" else route.keywords
+                print(f"  🔍 [Search Query] \"{search_query}\"")
                 
                 if route.intent == "new_question":
                     yield "<!-- thinking -->🗂️ Đang kiểm tra Semantic Cache...\n"
@@ -559,6 +565,7 @@ Trả về JSON:"""
                     cached_answer = SemanticCache().search_cache(query_embedding)
                     
                     if cached_answer:
+                        print(f"  🟢 [Semantic Cache] HIT CACHE!")
                         yield f"<!-- thinking -->🟢 HIT CACHE! Tìm thấy câu trả lời cũ.\n"
                         yield "<!-- clear_thinking -->"
                         words = cached_answer.split(' ')
@@ -569,14 +576,18 @@ Trả về JSON:"""
                 
                 yield f"<!-- thinking -->🔍 Tìm kiếm: \"{search_query[:50]}\"\n"
 
+                t0 = time.time()
                 retrieval_result = self.retrieval.retrieve(query=search_query)
+                t_retrieval = time.time() - t0
+                print(f"  ⏱️  [Stream] Retrieval xong trong {t_retrieval:.2f}s")
+                
                 retrieval_result.query = query
 
                 n_docs = len(retrieval_result.documents)
                 if n_docs > 0:
-                    yield f"<!-- thinking -->📚 Tìm thấy {n_docs} tài liệu\n"
+                    yield f"<!-- thinking -->📚 Tìm thấy {n_docs} tài liệu ({t_retrieval:.1f}s)\n"
                 else:
-                    yield f"<!-- thinking -->📭 Không tìm thấy tài liệu phù hợp\n"
+                    yield f"<!-- thinking -->📭 Không tìm thấy tài liệu phù hợp ({t_retrieval:.1f}s)\n"
 
         yield "<!-- thinking -->✍️ Đang soạn câu trả lời...\n"
         yield "<!-- clear_thinking -->"
@@ -584,11 +595,32 @@ Trả về JSON:"""
         safe_history = chat_history
         if not skip_reason and route.intent in ("new_question", "spam"):
             safe_history = []
+            print("  🧹 [Anti-Hallucination] Đã xóa chat_history vì intent là new_question/spam")
 
+        t1 = time.time()
+        total_chars = 0
         full_answer = ""
         async for chunk in self.generation.astream_generate(retrieval_result, safe_history):
+            total_chars += len(chunk)
             full_answer += chunk
             yield chunk
+
+        t_generation = time.time() - t1
+        t_pipeline = time.time() - t_total
+        
+        # Timing Report
+        print(f"\n{'='*60}")
+        print(f"  ⏱️  STREAMING PIPELINE TIMING REPORT (ASYNC)")
+        print(f"{'='*60}")
+        if skip_reason:
+            print(f"  ⚡ Pre-RAG Bypass                    : {skip_reason}")
+        else:
+            print(f"  🧠 Smart Router                     : {t_route:.2f}s")
+            print(f"  📥 Retrieval                        : {t_retrieval:.2f}s")
+        print(f"  🤖 LLM Stream Generation            : {t_generation:.2f}s ({total_chars} chars)")
+        print(f"  ──────────────────────────────────────────────")
+        print(f"  🏁 TỔNG PIPELINE                    : {t_pipeline:.2f}s")
+        print(f"{'='*60}\n")
 
         if not skip_reason and route.intent == "new_question" and retrieval_result.documents:
             query_embedding = self.retrieval.embedder.embed_query(search_query)

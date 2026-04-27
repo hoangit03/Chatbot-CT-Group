@@ -68,7 +68,7 @@ def get_all_vectors(collection_name: str = "general"):
         "data": formatted_data
     }
 
-def delete_all_vectors(collection_name: str = "hr_policies"):
+def delete_all_vectors(collection_name: str = "general"):
     """
     Xoá toàn bộ dữ liệu trong Collection của ChromaDB để làm mới (Reset) DB.
     """
@@ -90,7 +90,7 @@ def delete_all_vectors(collection_name: str = "hr_policies"):
     except Exception as e:
         return {"status": "error", "message": f"Lỗi khi xóa Collection '{collection_name}': {str(e)}"}
 
-def delete_vectors_by_source(source_file: str, collection_name: str = "hr_policies"):
+def delete_vectors_by_source(source_file: str, collection_name: str = "general"):
     """
     Xóa toàn bộ Vector có metadata 'source_file' khớp với giá trị truyền vào.
     Dùng khi người dùng chọn Ghi đè file.

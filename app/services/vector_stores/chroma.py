@@ -16,7 +16,7 @@ class ChromaVectorStore(BaseVectorStore):
     """
     Implementation hoàn chỉnh cho ChromaDB
     """
-    def __init__(self, persist_dir: str = None, collection_name: str = "hr_policies"):
+    def __init__(self, persist_dir: str = None, collection_name: str = "general"):
         self.persist_dir = persist_dir or  os.getenv("VECTOR_DB_DIR", "./vectorstore/chroma_db")
         self.collection_name = collection_name
         

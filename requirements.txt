@@ -12,7 +12,7 @@ langchain-huggingface
 langchain-chroma
 langchain-groq
 langchain-ollama
-chromadb 
+chromadb==0.4.24
 pypdf
 python-docx
 docx2txt

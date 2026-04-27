@@ -102,7 +102,7 @@ services:
 
   # ── ChromaDB ──
   chroma_server:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:0.4.24
     container_name: chroma_server
     restart: unless-stopped
     environment:
