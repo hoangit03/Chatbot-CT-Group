@@ -34,7 +34,8 @@ class Embedder:
                 check_embedding_ctx_length=False
             )
         else:
-            self.device = "cpu"
+            # self.device = "cpu"
+            self.device = os.getenv("EMBED_DEVICE", "cuda").lower()
             
             # Chọn model dựa trên device
             if self.device == "cuda":
