@@ -18,6 +18,7 @@ WORKDIR /app
 # --- Python dependencies ---
 COPY requirements.txt .
 RUN pip install --no-cache-dir uv && \
+    uv pip install --system --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu124 && \
     uv pip install --system --no-cache -r requirements.txt
 
 # --- Copy application source ---
