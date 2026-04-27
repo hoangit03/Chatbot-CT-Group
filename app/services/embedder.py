@@ -34,13 +34,13 @@ class Embedder:
                 check_embedding_ctx_length=False
             )
         else:
-            self.device = os.getenv("EMBED_DEVICE", "cuda").lower()
+            self.device = "cpu"
             
             # Chọn model dựa trên device
             if self.device == "cuda":
                 self.model_name = os.getenv("EMBEDDING_MODEL_GPU", "intfloat/multilingual-e5-large")
             else:
-                self.model_name = os.getenv("EMBEDDING_MODEL_CPU", "paraphrase-multilingual-MiniLM-L12-v2")
+                self.model_name = os.getenv("EMBEDDING_MODEL_CPU", "intfloat/multilingual-e5-large")
             
             print(f"[Embedder] Khởi tạo model LOCAL: {self.model_name} | Device: {self.device.upper()}")
             

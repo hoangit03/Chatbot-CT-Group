@@ -535,6 +535,7 @@ Trả về JSON:"""
     async def astream_answer(self, query: str, chat_history: List[BaseMessage] = None):
         import asyncio
         from app.services.cache_service import SemanticCache
+        t_total = time.time()
         chat_history = chat_history or []
 
         skip_reason = _is_skip_rag(query)

@@ -9,7 +9,7 @@ from sentence_transformers import SentenceTransformer
 app = FastAPI(title="Embedder API", version="1.0", description="OpenAI-compatible Embedding Service")
 
 model_name = os.getenv("EMBEDDING_MODEL_GPU", "intfloat/multilingual-e5-large")
-device = os.getenv("EMBED_DEVICE", "cuda").lower()
+device = "cpu"
 
 def robust_download(repo_id: str):
     """Stubborn download function that retries indefinitely on SSL/Network errors"""

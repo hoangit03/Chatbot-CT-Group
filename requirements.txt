@@ -37,7 +37,6 @@ ragas
 pyarrow==14.0.1
 datasets
 pandas
-
 rank_bm25
 langchain-openai
 redis

@@ -14,7 +14,7 @@ class CrossEncoderReranker(BaseReranker):
     """Concrete implementation dùng Cross-Encoder (rất hiệu quả cho RAG)"""
 
     def __init__(self, model_name: str = None):
-        self.device = os.getenv("RERANKER_DEVICE","cpu")
+        self.device = "cpu"
         self.model_name = model_name or "Qwen/Qwen3-Reranker-0.6B"
         print(f"Khởi tạo CrossEncoder reranker: {self.model_name} xử lý GPU: {self.device}, cuda: {torch.cuda.is_available()}")
         self.model = CrossEncoder(self.model_name, device=self.device)  
