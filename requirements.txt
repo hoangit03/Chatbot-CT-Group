@@ -41,3 +41,4 @@ pandas
 rank_bm25
 langchain-openai
 redis
+numpy<2.0.0
