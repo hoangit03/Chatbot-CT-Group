@@ -1,10 +1,11 @@
 # ============================================================
 # Dockerfile — CT-Group Chatbot FULL (Bot API + ETL + Workers)
 # Unified container cho server deployment
-# Requires: NVIDIA GPU (CUDA 12.x)
+# Requires: NVIDIA GPU (CUDA 12.8)
 # ============================================================
 
-FROM nvidia/cuda:12.6.0-runtime-ubuntu22.04
+# --- Base image with GPU support (Blackwell sm_120 support via PyTorch 2.7.0/CUDA 12.8) ---
+FROM nvcr.io/nvidia/pytorch:25.01-py3
 
 # --- System dependencies ---
 RUN apt-get update && apt-get install -y \
@@ -18,7 +19,6 @@ WORKDIR /app
 # --- Python dependencies ---
 COPY requirements.txt .
 RUN pip install --no-cache-dir uv && \
-    uv pip install --system --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu124 && \
     uv pip install --system --no-cache -r requirements.txt
 
 # --- Copy application source ---
