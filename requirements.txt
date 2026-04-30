@@ -1,14 +1,18 @@
---extra-index-url https://download.pytorch.org/whl/cu121
+# ============================================
+# Chatbot-CT-Group — CPU-only dependencies
+# GPU libs (torch, sentence-transformers) removed
+# → sử dụng Core AI services qua HTTP API
+# ============================================
 
 fastapi
 uvicorn[standard]
 streamlit
 langchain
 langchain-community
-langchain-huggingface
 langchain-chroma
 langchain-groq
-langchain-ollama
+langchain-openai
+langchain-text-splitters
 chromadb==0.4.24
 pypdf
 python-docx
@@ -19,12 +23,10 @@ python-pptx
 tqdm
 python-dotenv
 tiktoken
-sentence-transformers
 pydantic
 unstructured
 extract-msg>=0.50.0
 pywin32; sys_platform == 'win32'
-langchain-text-splitters
 python-multipart
 pika
 mammoth
@@ -33,8 +35,7 @@ tabulate
 ragas
 pyarrow==14.0.1
 datasets
-pandas
 rank_bm25
-langchain-openai
 redis
 numpy<2.0.0
+httpx

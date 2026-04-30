@@ -1,13 +1,58 @@
-.venv
+# Git
+.git
+.gitignore
+
+# Python cache
 __pycache__
 *.pyc
-.git
-*.bat
-scratch_*.py
-test_*.py
-test/
-docs/
-*.xlsx
-*.log
+*.pyo
+*.egg-info
+.eggs
+dist
+build
+
+# Virtual environments
+venv
+.venv
+env
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Data & Volumes (chạy trên server mount volume)
 vectorstore/
-shared_data/data_output/
+data/
+*.xlsx
+*.csv
+
+# Docker files (không cần trong image)
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Docs & Tests
+docs/
+test/
+*.md
+LICENSE
+
+# Environment (sử dụng env_file trong compose)
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Model weights (dùng Core AI services)
+models/
+*.bin
+*.pt
+*.onnx
+*.safetensors
