@@ -11,6 +11,9 @@ def create_app() -> FastAPI:
         title="ChatBot CT Group - Bot API",
         description="API chuyên dụng cho hệ thống RAG Chatbot",
         version="2.0.0",
+        docs_url="/api/docs",
+        openapi_url="/api/openapi.json",
+        redoc_url="/api/redoc"
     )
 
     app.add_middleware(

@@ -13,6 +13,9 @@ def create_app() -> FastAPI:
         title="ChatBot CT Group - Data Pipeline API",
         description="API chỉ chuyên dùng cho phần Nạp, Xử lý và Quản trị Data VectorDB",
         version="2.0.0",
+        docs_url="/etl/docs",
+        openapi_url="/etl/openapi.json",
+        redoc_url="/etl/redoc"
     )
 
     app.add_middleware(
