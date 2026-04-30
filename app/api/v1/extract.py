@@ -13,7 +13,7 @@ from app.services.cache_service import SemanticCache
 
 load_dotenv()
 
-router = APIRouter(prefix="/api/v1/extract", tags=["Document Extraction"])
+router = APIRouter(prefix="/etl/v1/extract", tags=["Document Extraction"])
 
 # === Path Resolution từ .env ===
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))

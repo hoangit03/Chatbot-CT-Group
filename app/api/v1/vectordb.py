@@ -10,7 +10,7 @@ REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../")
 SHARED_DIR = os.getenv("SHARED_DATA_DIR", os.path.join(REPO_ROOT, "shared_data"))
 REGISTRY_FILE = os.path.join(SHARED_DIR, "file_registry.json")
 
-router = APIRouter(prefix="/api/v1/vectordb", tags=["VectorDB Analytics"])
+router = APIRouter(prefix="/etl/v1/vectordb", tags=["VectorDB Analytics"])
 
 @router.get("/all")
 async def fetch_all_vectordb_data():
