@@ -8,7 +8,7 @@ from datetime import datetime
 BASE_URL_CHAT = "http://localhost:7999/api/v1"
 BASE_URL = "http://localhost:8001/etl/v1"
 
-MAX_FILES = 10
+MAX_FILES = 500
 
 st.set_page_config(page_title="Chatbot Document QA", layout="wide")
 

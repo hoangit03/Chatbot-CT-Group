@@ -12,8 +12,8 @@ app = FastAPI(title="PaddleOCR-VL-1.5 Native Server", version="1.0")
 # Khởi tạo mô hình siêu to khổng lồ VLM
 print("[VLM Engine] Đang nạp PaddleOCR-VL-1.5 vào VRAM 4GB...")
 try:
-    pipeline = create_pipeline('PaddleOCR-VL-1.5')
-    print("[VLM Engine] Nạp model thành công!")
+    pipeline = create_pipeline('PaddleOCR-VL-1.5', device='cpu')
+    print("[VLM Engine] Nạp model thành công (CPU Mode)!")
 except Exception as e:
     print(f"[VLM Engine Lỗi Cấp Bách] Không nạp được mô hình PaddleOCR-VL-1.5: {e}")
     # Fallback to structure v3 if VL doesn't exist
