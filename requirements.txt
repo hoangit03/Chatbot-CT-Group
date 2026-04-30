@@ -1,41 +1,11 @@
 # ============================================
-# Chatbot-CT-Group — CPU-only dependencies
-# GPU libs (torch, sentence-transformers) removed
-# → sử dụng Core AI services qua HTTP API
+# Chatbot-CT-Group — Project-specific deps ONLY
+# Thư viện dùng chung đã nằm trong ctgroup/python-base:1.0
+# Chỉ thêm vào đây nếu project này cần lib RIÊNG
 # ============================================
 
-fastapi
-uvicorn[standard]
-streamlit
-langchain
-langchain-community
-langchain-chroma
+# Hiện tại tất cả deps đã có trong base image
+# Thêm project-specific deps bên dưới nếu cần:
+
 langchain-groq
-langchain-openai
-langchain-text-splitters
-chromadb==0.4.24
-pypdf
-python-docx
-docx2txt
-pandas
-openpyxl
-python-pptx
-tqdm
-python-dotenv
-tiktoken
-pydantic
-unstructured
-extract-msg>=0.50.0
-pywin32; sys_platform == 'win32'
-python-multipart
-pika
-mammoth
-markdownify
-tabulate
 ragas
-pyarrow==14.0.1
-datasets
-rank_bm25
-redis
-numpy<2.0.0
-httpx

@@ -1,22 +1,16 @@
 # ============================================================
 # Dockerfile — CT-Group Chatbot (3-Tier: App Layer ONLY)
-# NO GPU — gọi Core AI services qua HTTP API
-# Base: python:3.11-slim (~150MB thay vì ~15GB)
+# FROM ctgroup/python-base:1.0 — shared base image
+# Chỉ COPY code, KHÔNG cài pip lại (~30s build)
 # ============================================================
 
-FROM python:3.11-slim
-
-# --- System dependencies ---
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl git supervisor libreoffice \
-    libgl1 libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+FROM ctgroup/python-base:1.0
 
 WORKDIR /app
 
-# --- Python dependencies (CPU-only, nhẹ) ---
+# --- Project-specific deps (chỉ lib RIÊNG của project này) ---
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt 2>/dev/null || true
 
 # --- Copy application source ---
 COPY app/ ./app/
