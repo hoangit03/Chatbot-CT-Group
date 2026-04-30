@@ -1,53 +1,34 @@
+# =============================================================
+# Docker Compose — Chatbot Legacy (Tầng 3: App Layer ONLY)
+# Sử dụng Core AI services (Tầng 1) + Shared Infra (Tầng 2)
+# qua global_proxy_network
+# =============================================================
+
 services:
-  paddleocr:
-    image: paddlepaddle/paddle:3.3.0-gpu-cuda12.6-cudnn9.5
-    container_name: paddleocr_server
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              capabilities: ["gpu"]
-    ports:
-      - "8088:8080"
-    volumes:
-      - ./:/workspace
-      - ./shared_data/data_input:/data/input
-      - ./shared_data/data_output:/data/output
-      - paddleocr_cache:/root/.paddlex
-    shm_size: '4gb'
-    working_dir: /workspace
-    command: >
-      bash -c "
-        apt-get update && apt-get install -y libgl1 libglib2.0-0 &&
-        pip install 'paddleocr[doc-parser]' python-docx fastapi uvicorn PyMuPDF -q &&
-        echo '=== PaddleOCR FastAPI Starting ===' &&
-        uvicorn app.api_paddle:app --host 0.0.0.0 --port 8080
-      "
+  chatbot_app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: legacy_chatbot_app
     restart: unless-stopped
-
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: rabbitmq_server
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+    env_file:
+      - .env
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    restart: unless-stopped
-
-  chromadb:
-    image: chromadb/chroma:latest
-    container_name: chroma_server
+      - ./shared_data:/app/shared_data
     ports:
-      - "8002:8000"
-    environment:
-      - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma
-    volumes:
-      - ./vectorstore/chroma_db:/chroma/chroma
-    restart: unless-stopped
+      - "7999:7999"
+      - "8001:8001"
+      - "8501:8501"
+      - "8003:8003"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:7999/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    networks:
+      - global_proxy_network
 
-volumes:
-  paddleocr_cache:
-  rabbitmq_data:
+networks:
+  global_proxy_network:
+    external: true
