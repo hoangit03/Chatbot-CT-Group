@@ -48,11 +48,13 @@ def get_all_vectors(collection_name: str = "general"):
         emb_val = []
         if embeddings_list is not None and len(embeddings_list) > i:
             raw_emb = embeddings_list[i]
-            # Chống Crash Numpy sang JSON và chống lỗi ValueError (Truth value ambiguous)
+            # Chống Crash Numpy sang JSON và chống lỗi ValueError
             if hasattr(raw_emb, "tolist"):
-                emb_val = raw_emb.tolist()
+                full_emb = raw_emb.tolist()
             else:
-                emb_val = list(raw_emb)
+                full_emb = list(raw_emb)
+            # Cắt ngắn tensor (chỉ lấy 5 giá trị đầu) để không làm treo trình duyệt
+            emb_val = full_emb[:5] + [f"... (ẩn {len(full_emb)-5} dimensions)"]
 
         formatted_data.append({
             "id": all_data["ids"][i],
