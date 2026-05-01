@@ -137,7 +137,7 @@ def predict_layout(req: OCRRequest):
                 page = doc.load_page(page_idx)
                 # Tăng DPi resolution để OCR rõ nét nhưng không quá lớn
                 pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
-                img_path = f"/data/input/{temp_id}_page{page_idx}.png"
+                img_path = f"{temp_dir}/{temp_id}_page{page_idx}.png"
                 pix.save(img_path)
                 
                 print(f"[VLM Engine] Analyzing Page {page_idx}", flush=True)
