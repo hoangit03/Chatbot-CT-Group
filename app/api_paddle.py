@@ -7,21 +7,21 @@ import fitz  # PyMuPDF
 from paddlex import create_pipeline
 import paddle
 
-app = FastAPI(title="PaddleOCR-VL-1.5 Native Server", version="1.0")
+app = FastAPI(title="PaddleOCR-VL-1.5 Native Server", version="2.0")
 
-# Khởi tạo mô hình siêu to khổng lồ VLM
-print("[VLM Engine] Đang nạp PaddleOCR-VL-1.5 vào VRAM 4GB...")
+# Khởi tạo mô hình VLM
+# Khi chạy trên GPU (Ampere/Hopper): device='gpu'
+# Khi chạy trên CPU: device='cpu'
+DEVICE = os.environ.get("PADDLE_DEVICE", "gpu")
+print(f"[VLM Engine] Đang nạp PaddleOCR-VL-1.5 ({DEVICE.upper()} Mode)...")
+pipeline = None
 try:
-    pipeline = create_pipeline('PaddleOCR-VL-1.5', device='cpu')
-    print("[VLM Engine] Nạp model thành công (CPU Mode)!")
+    pipeline = create_pipeline('PaddleOCR-VL-1.5', device=DEVICE)
+    print(f"[VLM Engine] ✅ Nạp PaddleOCR-VL-1.5 thành công ({DEVICE.upper()} Mode)!")
 except Exception as e:
-    print(f"[VLM Engine Lỗi Cấp Bách] Không nạp được mô hình PaddleOCR-VL-1.5: {e}")
-    # Fallback to structure v3 if VL doesn't exist
-    try:
-        pipeline = create_pipeline('PP-StructureV3')
-        print("[VLM Engine] Nạp dự phòng PP-StructureV3 thành công!")
-    except Exception as inner_e:
-        pipeline = None
+    print(f"[VLM Engine] ❌ Không nạp được PaddleOCR-VL-1.5: {e}")
+    import traceback
+    traceback.print_exc()
 
 class OCRRequest(BaseModel):
     file_b64: str
@@ -55,22 +55,8 @@ def predict_layout(req: OCRRequest):
         
         # Hàm xử lý chung kết quả VLM
         def process_page_res(page_res):
-            print(f"[DEBUG] process_page_res Type: {type(page_res)}", flush=True)
-            if isinstance(page_res, dict):
-                print(f"[DEBUG] Keys: {list(page_res.keys())}", flush=True)
-            else:
-                print(f"[DEBUG] Attrs: {dir(page_res)}", flush=True)
-                if hasattr(page_res, '__dict__'):
-                    print(f"[DEBUG] Dict vars: {page_res.__dict__.keys()}", flush=True)
-                    
             page_md = []
             if isinstance(page_res, dict):
-                print(f"[DEBUG] Has parsing_res_list: {'parsing_res_list' in page_res}", flush=True)
-                if 'parsing_res_list' in page_res:
-                    print(f"[DEBUG] parsing_res_list len: {len(page_res['parsing_res_list'])}", flush=True)
-                    if len(page_res['parsing_res_list']) > 0:
-                        first = page_res['parsing_res_list'][0]
-                        print(f"[DEBUG] First block type: {type(first)}, dict: {first if isinstance(first, dict) else dir(first)}", flush=True)
                 if 'markdown' in page_res and isinstance(page_res['markdown'], dict) and 'text' in page_res['markdown']:
                     page_md.append(page_res['markdown']['text'])
                 elif 'parsing_res_list' in page_res:
@@ -84,7 +70,6 @@ def predict_layout(req: OCRRequest):
                     parsing_res = sorted(parsing_res, key=lambda x: _get_val(x, 'block_order') if _get_val(x, 'block_order') is not None else 9999)
                     
                     for block in parsing_res:
-                        # Support PPStructureV3 AND PaddleOCR-VL-1.5 formats
                         label = _get_val(block, 'label') or _get_val(block, 'block_label')
                         orig_text = _get_val(block, 'content') or _get_val(block, 'text') or _get_val(block, 'block_content', '')
                         orig_text = str(orig_text).strip() if orig_text else ''
@@ -106,7 +91,7 @@ def predict_layout(req: OCRRequest):
                     page_md.append(str(page_res.get('chat_res', '')))
                 elif 'raw_out' in page_res:
                     page_md.append(str(page_res.get('raw_out', '')))
-                elif 'res' in page_res and 'markdown' in page_res['res']: # sometimes nested
+                elif 'res' in page_res and 'markdown' in page_res['res']:
                     page_md.append(str(page_res['res']['markdown']))
             else:
                 if hasattr(page_res, 'markdown'):
@@ -120,7 +105,6 @@ def predict_layout(req: OCRRequest):
                 elif hasattr(page_res, '__dict__') and 'chat_res' in page_res.__dict__:
                     page_md.append(str(page_res.__dict__.get('chat_res', '')))
                 elif hasattr(page_res, 'get'):
-                    # Call nested dict
                     doc_dict = getattr(page_res, 'get')('res', {})
                     if 'markdown' in doc_dict:
                         page_md.append(str(doc_dict['markdown']))
@@ -129,30 +113,27 @@ def predict_layout(req: OCRRequest):
                         
             return "\n".join(page_md)
 
-        # 2. Xử lý từng trang PDF bằng cách tách thành Image (Giảm tải VRAM OOM)
+        # 2. Xử lý từng trang PDF bằng cách tách thành Image
         if ext.lower() == '.pdf':
             doc = fitz.open(temp_path)
-            print(f"[VLM Engine] Tách PDF thành {len(doc)} ảnh để bảo vệ VRAM", flush=True)
+            print(f"[VLM Engine] Tách PDF thành {len(doc)} ảnh", flush=True)
             for page_idx in range(len(doc)):
                 page = doc.load_page(page_idx)
-                # Tăng DPi resolution để OCR rõ nét nhưng không quá lớn
                 pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
                 img_path = f"{temp_dir}/{temp_id}_page{page_idx}.png"
                 pix.save(img_path)
                 
-                print(f"[VLM Engine] Analyzing Page {page_idx}", flush=True)
-                # Đưa từng ảnh vào qua pipeline (1 in 1 out)
-                img_result = pipeline(img_path)
+                print(f"[VLM Engine] Analyzing Page {page_idx + 1}/{len(doc)}", flush=True)
+                img_result = pipeline.predict(img_path, use_queues=False)
                 
-                # Quét qua result stream của 1 page này
                 for item in img_result:
                     parsed_text = process_page_res(item)
                     final_markdown.append(parsed_text)
                     
-                # Xóa ngay lập tức ảnh trên đĩa để giải phóng
+                # Xóa ảnh tạm
                 os.remove(img_path)
                 
-                # Giải phóng VRAM CUDA cho luồng tiếp theo
+                # Giải phóng VRAM
                 try:
                     paddle.device.cuda.empty_cache()
                 except Exception:
@@ -161,7 +142,7 @@ def predict_layout(req: OCRRequest):
             doc.close()
         else:
             # Dành cho các định dạng không phải PDF (VD: png, jpg)
-            result = pipeline(temp_path)
+            result = pipeline.predict(temp_path, use_queues=False)
             for idx, page_res in enumerate(result):
                 print(f"[VLM Engine] Analyzing Component {idx}", flush=True)
                 parsed_text = process_page_res(page_res)
@@ -179,14 +160,11 @@ def predict_layout(req: OCRRequest):
         return OCRResponse(markdown="", success=False, error=err_msg)
         
     finally:
-        # Xóa file rác tiết kiệm ổ cứng cho máy 4GB
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
             except:
                 pass
-                
-        # Gom rác đồ họa lần chót
         try:
             paddle.device.cuda.empty_cache()
         except Exception:
