@@ -40,7 +40,9 @@ def predict_layout(req: OCRRequest):
     # Đường dẫn file tạm trong Docker
     temp_id = str(uuid.uuid4())
     ext = os.path.splitext(req.file_name)[1]
-    temp_path = f"/data/input/{temp_id}{ext}"
+    temp_dir = "/tmp"
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_path = f"{temp_dir}/{temp_id}{ext}"
     
     try:
         # 1. Giải mã Base64 thành file vật lý
