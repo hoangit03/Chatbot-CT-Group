@@ -63,9 +63,10 @@ def run_ocr_pipeline(pdf_name: str) -> bool:
     for attempt in range(1, ENGINE_MAX_RETRIES + 1):
         try:
             print(f"[Paddle Engine HTTP] Lần {attempt}/{ENGINE_MAX_RETRIES} — Truyền tải {len(file_b64)/1024:.2f} KB...", flush=True)
+            import json as _json
             res = requests.post(
                 PADDLE_OCR_ENDPOINT, 
-                json=payload, 
+                data=_json.dumps(payload),
                 headers=NGROK_HEADERS,
                 timeout=7200
             )
