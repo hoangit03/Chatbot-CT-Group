@@ -17,7 +17,7 @@ RESULT_DIR = os.path.join(OUTPUT_DIR, "result")
 
 # Định tuyến qua API Endpoint Phân Tán
 # Sử dụng os.getenv thay vì hardcode localhost
-PADDLE_OCR_ENDPOINT = os.getenv("PADDLE_OCR_ENDPOINT", "http://localhost:8080/layout-parsing")
+DOCLING_ENDPOINT = os.getenv("DOCLING_ENDPOINT", os.getenv("PADDLE_OCR_ENDPOINT", "http://core_docling:8080/layout-parsing"))
 
 # Retry config cho external API (ngrok, cloud, etc.)
 ENGINE_MAX_RETRIES = 5
@@ -32,13 +32,13 @@ NGROK_HEADERS = {
 
 def run_ocr_pipeline(pdf_name: str) -> bool:
     """
-    Kích hoạt tiến trình Paddle OCR qua HTTP Server API.
+    Kích hoạt tiến trình Docling OCR qua HTTP Server API.
     Architecture: Distributed Microservices Cấp Độ Enterprise.
-    Hỗ trợ xử lý trực tiếp base64 của file, PaddleX tự động gom markdown.
+    Hỗ trợ xử lý trực tiếp base64 của file, Docling tự động gom markdown.
     Tích hợp retry + ngrok bypass header.
     """
     base_name = os.path.splitext(pdf_name)[0]
-    print(f"\n[Paddle Engine HTTP] Bắn lệnh xử lý từ xa cho file: {pdf_name}", flush=True)
+    print(f"\n[Docling Engine HTTP] Bắn lệnh xử lý từ xa cho file: {pdf_name}", flush=True)
     
     file_path = os.path.join(INPUT_DIR, pdf_name)
     if not os.path.exists(file_path):
@@ -62,10 +62,10 @@ def run_ocr_pipeline(pdf_name: str) -> bool:
     api_response = None
     for attempt in range(1, ENGINE_MAX_RETRIES + 1):
         try:
-            print(f"[Paddle Engine HTTP] Lần {attempt}/{ENGINE_MAX_RETRIES} — Truyền tải {len(file_b64)/1024:.2f} KB...", flush=True)
+            print(f"[Docling Engine HTTP] Lần {attempt}/{ENGINE_MAX_RETRIES} — Truyền tải {len(file_b64)/1024:.2f} KB...", flush=True)
             import json as _json
             res = requests.post(
-                PADDLE_OCR_ENDPOINT, 
+                DOCLING_ENDPOINT, 
                 data=_json.dumps(payload),
                 headers=NGROK_HEADERS,
                 timeout=7200
@@ -94,7 +94,7 @@ def run_ocr_pipeline(pdf_name: str) -> bool:
             api_response = res.json()
             
             if not api_response.get("success", False):
-                print(f"[Engine Error] PaddleX Từ Chối: {api_response.get('error', 'unknown')}")
+                print(f"[Engine Error] Docling Từ Chối: {api_response.get('error', 'unknown')}")
                 return False
             
             # Thành công -> thoát loop
@@ -132,12 +132,12 @@ def run_ocr_pipeline(pdf_name: str) -> bool:
             return False
         
         os.makedirs(RESULT_DIR, exist_ok=True)
-        final_md_path = os.path.join(RESULT_DIR, f"{base_name}_paddle_only.md")
+        final_md_path = os.path.join(RESULT_DIR, f"{base_name}_docling.md")
         
         with open(final_md_path, 'w', encoding='utf-8') as f:
             f.write(markdown_result)
             
-        print(f"[Paddle Engine HTTP] ✅ Đã ghim thành công {pdf_name} ({len(markdown_result)} chars)", flush=True)
+        print(f"[Docling Engine HTTP] ✅ Đã ghim thành công {pdf_name} ({len(markdown_result)} chars)", flush=True)
         return True
         
     except Exception as e:

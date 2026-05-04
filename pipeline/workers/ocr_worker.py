@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Clean imports (không dùng sys.path hack)
-from pipeline.engines.paddle_engine import run_ocr_pipeline
+from pipeline.engines.docling_engine import run_ocr_pipeline
 from app.services.broker_service import cleaning_publisher
 
 RABBITMQ_HOST = os.getenv("RABBITMQ_HOST", "localhost")
@@ -32,7 +32,7 @@ def callback(ch, method, properties, body):
             
             # --- Chuyển Tiếp Sang Trạm Cleaning (Làm Sạch) ---
             base_name = os.path.splitext(pdf_name)[0]
-            md_file_name = f"{base_name}_paddle_only.md"
+            md_file_name = f"{base_name}_docling.md"
             cleaning_publisher.publish_task(md_file_name)
             print(f"[Rabbit Worker] Đã vận chuyển {md_file_name} tới Cleaning Queue.")
         else:
