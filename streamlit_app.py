@@ -43,6 +43,10 @@ def log_upload(file_name, status, message=""):
 # =========================
 def upload_and_extract(files, force_update=False):
     try:
+        # Reset con trỏ file về 0 trước khi đọc để tránh lỗi file 0KB khi Ghi đè (force_update)
+        for file in files:
+            file.seek(0)
+            
         # build multipart đúng chuẩn cho FastAPI List[UploadFile]
         multipart_files = [
             ("files", (file.name, file, file.type))
