@@ -1,29 +1,53 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header, BackgroundTasks
 from fastapi.responses import StreamingResponse
-from typing import List
+from typing import List, Optional
 
 from langchain_core.messages import HumanMessage, AIMessage
 
 from app.models.chat import ChatRequest, ChatResponse, Message, Source
 from app.services.rag_service import RAGService
+from app.services.history_service import save_chat_message_async
+import os
 
 router = APIRouter(prefix="/api/v1", tags=["Chatbot"])
 
 rag_service = RAGService()
 
-
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+async def chat(
+    request: ChatRequest,
+    background_tasks: BackgroundTasks,
+    x_user_id: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
+    x_role_level: Optional[str] = Header("1"),
+    x_session_id: Optional[str] = Header(None)
+):
     """
     API Chatbot RAG - Hỗ trợ multi-turn conversation (Blocking - Chờ xong mới trả)
     """
     try:
         history = _build_history(request)
 
+        # Xây dựng Qdrant Filter dựa trên x_role_level
+        from qdrant_client.http import models
+        role_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="metadata.min_role_level",
+                    range=models.Range(lte=int(x_role_level))
+                )
+            ]
+        )
+
+        # Lưu user message vào lịch sử
+        if x_session_id:
+            background_tasks.add_task(save_chat_message_async, x_session_id, "user", request.query, x_user_id, x_tenant_id)
+
         # Gọi RAG Service
         result = await rag_service.aanswer(
             query=request.query,
-            chat_history=history
+            chat_history=history,
+            metadata_filter=role_filter
         )
 
         # Tạo response custom
@@ -35,6 +59,10 @@ async def chat(request: ChatRequest):
             # retrieved_count=result["retrieved_count"],
         )
 
+        # Lưu bot message vào lịch sử
+        if x_session_id:
+            background_tasks.add_task(save_chat_message_async, x_session_id, "assistant", result["answer"], x_user_id, x_tenant_id)
+
         return response
 
     except Exception as e:
@@ -45,15 +73,55 @@ async def chat(request: ChatRequest):
 
 
 @router.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(
+    request: ChatRequest,
+    background_tasks: BackgroundTasks,
+    x_user_id: Optional[str] = Header(None),
+    x_tenant_id: Optional[str] = Header(None),
+    x_role_level: Optional[str] = Header("1"),
+    x_session_id: Optional[str] = Header(None)
+):
     """
     API Chatbot RAG - Streaming (Gõ từng chữ trả về cho UI)
     Trả về text/event-stream cho Streamlit hoặc bất kỳ SSE client nào.
     """
     try:
         history = _build_history(request)
+        
+        from qdrant_client.http import models
+        role_filter = models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="metadata.min_role_level",
+                    range=models.Range(lte=int(x_role_level))
+                )
+            ]
+        )
+
+        # Lưu user message vào lịch sử
+        if x_session_id:
+            background_tasks.add_task(save_chat_message_async, x_session_id, "user", request.query, x_user_id, x_tenant_id)
+
+        # Streaming function wrap để có thể hook callback
+        async def stream_and_save():
+            full_response = ""
+            async for chunk in rag_service.astream_answer(
+                query=request.query, 
+                chat_history=history,
+                metadata_filter=role_filter
+            ):
+                if not chunk.startswith("<!-- thinking -->") and chunk != "<!-- clear_thinking -->":
+                    full_response += chunk
+                yield chunk
+                
+            # Lưu lịch sử sau khi stream xong
+            if x_session_id and full_response:
+                # Không dùng background_tasks ở đây được vì nó gắn với FastAPI route 
+                # (đã exit scope lúc stream kết thúc), nên call luôn.
+                await save_chat_message_async(x_session_id, "assistant", full_response, x_user_id, x_tenant_id)
+
         return StreamingResponse(
-            rag_service.astream_answer(query=request.query, chat_history=history),
+            stream_and_save(),
             media_type="text/event-stream"
         )
     except Exception as e:

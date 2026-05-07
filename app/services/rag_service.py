@@ -479,7 +479,7 @@ Trả về JSON:"""
         print(f"  🏁 TỔNG PIPELINE                    : {t_pipeline:.2f}s")
         print(f"{'='*60}\n")
 
-    async def aanswer(self, query: str, chat_history: List[BaseMessage] = None) -> Dict[str, Any]:
+    async def aanswer(self, query: str, chat_history: List[BaseMessage] = None, metadata_filter: Any = None) -> Dict[str, Any]:
         from app.services.cache_service import SemanticCache
         chat_history = chat_history or []
         skip_reason = _is_skip_rag(query)
@@ -509,7 +509,7 @@ Trả về JSON:"""
                             "cached": True
                         }
                         
-                retrieval_result = self.retrieval.retrieve(query=search_query)
+                retrieval_result = self.retrieval.retrieve(query=search_query, metadata_filter=metadata_filter)
                 retrieval_result.query = query
 
         safe_history = chat_history
@@ -532,7 +532,7 @@ Trả về JSON:"""
             "cached": False
         }
 
-    async def astream_answer(self, query: str, chat_history: List[BaseMessage] = None):
+    async def astream_answer(self, query: str, chat_history: List[BaseMessage] = None, metadata_filter: Any = None):
         import asyncio
         from app.services.cache_service import SemanticCache
         t_total = time.time()
@@ -578,7 +578,7 @@ Trả về JSON:"""
                 yield f"<!-- thinking -->🔍 Tìm kiếm: \"{search_query[:50]}\"\n"
 
                 t0 = time.time()
-                retrieval_result = self.retrieval.retrieve(query=search_query)
+                retrieval_result = self.retrieval.retrieve(query=search_query, metadata_filter=metadata_filter)
                 t_retrieval = time.time() - t0
                 print(f"  ⏱️  [Stream] Retrieval xong trong {t_retrieval:.2f}s")
                 

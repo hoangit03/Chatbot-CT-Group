@@ -3,6 +3,7 @@ from typing import Type
 
 from app.services.vector_stores.base import BaseVectorStore
 from app.services.vector_stores.chroma import ChromaVectorStore
+from app.services.vector_stores.qdrant_store import QdrantVectorStore
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -12,6 +13,7 @@ class VectorStoreFactory:
 
     _stores = {
         "chroma": ChromaVectorStore,
+        "qdrant": QdrantVectorStore,
     }
 
     @classmethod
