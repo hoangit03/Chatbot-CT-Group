@@ -8,7 +8,8 @@ services:
     env_file:
     - .env
     volumes:
-    - ./shared_data:/app/shared_data
+    - ../shared-etl:/app/shared_data
+    - ./app:/app/app
     ports:
     - 7999:7999
     - 8001:8001

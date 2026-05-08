@@ -8,6 +8,7 @@
 # Thêm project-specific deps bên dưới nếu cần:
 
 langchain-groq
-ragasqdrant-client
+ragas
+qdrant-client
 langchain-qdrant
 asyncpg

@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
 from app.services.broker_service import ocr_publisher, to_md_publisher
-from pipeline.engines.vectordb_engine import delete_vectors_by_source
+from app.services.vector_stores.factory import VectorStoreFactory
 from app.services.cache_service import SemanticCache
 
 load_dotenv()
@@ -83,7 +83,13 @@ async def extract_documents(
                 continue
             else:
                 # Tiến hành xóa VectorDB cũ để chuẩn bị ghi đè
-                delete_vectors_by_source(base_name)
+                try:
+                    vs = VectorStoreFactory.get_vector_store()
+                    if hasattr(vs, "_collection"):
+                        # ChromaDB delete
+                        vs._collection.delete(where={"source": {"$like": f"%{base_name}%"}})
+                except Exception as e:
+                    print(f"Failed to delete old vectors: {e}")
                 # Xóa Semantic Cache
                 SemanticCache().flush_cache()
         

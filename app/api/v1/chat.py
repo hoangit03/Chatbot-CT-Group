@@ -102,17 +102,64 @@ async def chat_stream(
         if x_session_id:
             background_tasks.add_task(save_chat_message_async, x_session_id, "user", request.query, x_user_id, x_tenant_id)
 
+        import json
+        
+        async def _gen_suggestions(prompt_text: str, answer_text: str) -> list:
+            try:
+                from langchain_core.messages import HumanMessage
+                sug_prompt = (
+                    "Dựa trên câu hỏi và câu trả lời sau, hãy gợi ý 2 câu hỏi tiếp theo người dùng có thể quan tâm. "
+                    "TRẢ VỀ JSON: {\"suggested_questions\": [\"cau 1\", \"cau 2\"]}\n\n"
+                    f"Câu hỏi: {prompt_text}\n"
+                    f"Câu trả lời: {answer_text}"
+                )
+                # LLM call async
+                import asyncio
+                loop = asyncio.get_event_loop()
+                resp = await loop.run_in_executor(
+                    None, 
+                    lambda: rag_service.generation.llm_client.invoke([HumanMessage(content=sug_prompt)])
+                )
+                
+                # Try parsing JSON robustly
+                import re
+                content = resp if isinstance(resp, str) else resp.content
+                content = content.strip()
+                json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                if json_match:
+                    data = json.loads(json_match.group())
+                    return data.get("suggested_questions", [])[:2]
+                return []
+            except Exception as e:
+                print(f"Error gen suggestions: {e}")
+                return []
+
         # Streaming function wrap để có thể hook callback
         async def stream_and_save():
             full_response = ""
+            sess_id = x_session_id or ""
+            
             async for chunk in rag_service.astream_answer(
                 query=request.query, 
                 chat_history=history,
                 metadata_filter=role_filter
             ):
-                if not chunk.startswith("<!-- thinking -->") and chunk != "<!-- clear_thinking -->":
+                if chunk.startswith("<!-- thinking -->") or chunk == "<!-- clear_thinking -->":
+                    pass
+                else:
                     full_response += chunk
-                yield chunk
+                    # Format standard SSE
+                    yield f"data: {json.dumps({'text': chunk, 'session_id': sess_id})}\n\n"
+                
+            # Sinh câu hỏi gợi ý khi đã stream xong text
+            if full_response:
+                suggestions = await _gen_suggestions(request.query, full_response)
+                if suggestions:
+                    yield f"data: {json.dumps({'suggested_questions': suggestions, 'session_id': sess_id})}\n\n"
+            
+            # Gửi Metadata và Done
+            yield f"data: {json.dumps({'intent': 'qtqd', 'session_id': sess_id, 'sources': []})}\n\n"
+            yield "data: [DONE]\n\n"
                 
             # Lưu lịch sử sau khi stream xong
             if x_session_id and full_response:

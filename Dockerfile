@@ -14,8 +14,6 @@ RUN pip install --no-cache-dir -r requirements.txt 2>/dev/null || true
 
 # --- Copy application source ---
 COPY app/ ./app/
-COPY pipeline/ ./pipeline/
-COPY streamlit_app.py .
 
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 

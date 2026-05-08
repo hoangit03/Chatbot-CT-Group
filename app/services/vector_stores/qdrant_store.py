@@ -17,13 +17,28 @@ class QdrantVectorStore(BaseVectorStore):
     def __init__(self):
         host = os.getenv("QDRANT_HOST", "core_qdrant")
         port = int(os.getenv("QDRANT_PORT", "6333"))
+        api_key = os.getenv("QDRANT_API_KEY", None)
         
         # Determine the collection to query based on env var (or dynamic later)
         # Defaulting to env var, but later RetrievalService will pass dynamic filter
         self.collection_name = os.getenv("QDRANT_COLLECTION", "qtqd")
         
-        self.client = QdrantClient(host=host, port=port)
-        self.embedder = Embedder()
+        if api_key:
+            self.client = QdrantClient(host=host, port=port, api_key=api_key, https=False)
+        else:
+            self.client = QdrantClient(host=host, port=port, https=False)
+            
+        try:
+            self.client.get_collection(self.collection_name)
+        except Exception:
+            from qdrant_client.models import VectorParams, Distance
+            # default dimension for multilingual-e5-large is 1024
+            self.client.create_collection(
+                collection_name=self.collection_name,
+                vectors_config=VectorParams(size=1024, distance=Distance.COSINE)
+            )
+            
+        self.embedder = Embedder().get_embedding_model()
         
         # Use Langchain's Qdrant wrapper
         self.vectorstore = LangchainQdrant(
