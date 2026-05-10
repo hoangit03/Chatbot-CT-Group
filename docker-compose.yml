@@ -30,6 +30,16 @@ services:
       options:
         max-size: 50m
         max-file: '5'
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: legacy_chatbot_frontend
+    restart: unless-stopped
+    ports:
+    - 8008:80
+    networks:
+    - global_proxy_network
 networks:
   global_proxy_network:
     external: true
